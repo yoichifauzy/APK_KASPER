@@ -1,0 +1,618 @@
+-- phpMyAdmin SQL Dump
+-- version 5.2.2
+-- https://www.phpmyadmin.net/
+--
+-- Host: 127.0.0.1
+-- Generation Time: Nov 17, 2025 at 02:51 AM
+-- Server version: 8.4.3
+-- PHP Version: 8.4.10
+
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+START TRANSACTION;
+SET time_zone = "+00:00";
+
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8mb4 */;
+
+--
+-- Database: `db_kas_kelas`
+--
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `agenda`
+--
+
+CREATE TABLE `agenda` (
+  `id_agenda` int NOT NULL,
+  `judul` varchar(100) NOT NULL,
+  `deskripsi` text,
+  `tanggal` date NOT NULL,
+  `dibuat_oleh` int DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `announcements`
+--
+
+CREATE TABLE `announcements` (
+  `id` int NOT NULL,
+  `tema` varchar(255) NOT NULL,
+  `isi` text NOT NULL,
+  `pembuat` varchar(100) NOT NULL,
+  `tanggal_posting` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `label` varchar(50) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Dumping data for table `announcements`
+--
+
+INSERT INTO `announcements` (`id`, `tema`, `isi`, `pembuat`, `tanggal_posting`, `label`) VALUES
+(1, 'PGT Cup', 'Pembayaran Kas harus sesuai tanggal', 'Operator', '2025-11-07 08:12:53', 'PENTING');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `chat`
+--
+
+CREATE TABLE `chat` (
+  `id_chat` int NOT NULL,
+  `id_user` int DEFAULT NULL,
+  `topic_id` int DEFAULT NULL,
+  `pesan` text NOT NULL,
+  `waktu` timestamp NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Dumping data for table `chat`
+--
+
+INSERT INTO `chat` (`id_chat`, `id_user`, `topic_id`, `pesan`, `waktu`) VALUES
+(18, 16, 2, 'hai kak', '2025-11-09 03:32:40'),
+(19, 16, 2, 'boleh minta nomer wa nya gak kak', '2025-11-09 03:33:51'),
+(20, 16, 2, 'Hai asslamualaikum', '2025-11-13 03:13:54'),
+(21, 16, 2, 'hi\n', '2025-11-13 03:36:15');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `discussion_categories`
+--
+
+CREATE TABLE `discussion_categories` (
+  `id` int NOT NULL,
+  `name` varchar(50) NOT NULL,
+  `description` text,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Dumping data for table `discussion_categories`
+--
+
+INSERT INTO `discussion_categories` (`id`, `name`, `description`, `created_at`, `updated_at`) VALUES
+(1, 'Umum', 'Diskusi umum tentang apa saja.', '2025-11-09 02:34:09', '2025-11-09 02:34:09'),
+(2, 'Pengumuman', 'Pengumuman penting dari operator atau admin.', '2025-11-09 02:34:09', '2025-11-09 02:34:09'),
+(3, 'Bantuan Teknis', 'Jika Anda mengalami masalah teknis dengan aplikasi.', '2025-11-09 02:34:09', '2025-11-09 02:34:09');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `discussion_posts`
+--
+
+CREATE TABLE `discussion_posts` (
+  `id` int NOT NULL,
+  `topic_id` int NOT NULL,
+  `user_id` int NOT NULL,
+  `parent_post_id` int DEFAULT NULL,
+  `content` text NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `discussion_topics`
+--
+
+CREATE TABLE `discussion_topics` (
+  `id` int NOT NULL,
+  `user_id` int NOT NULL,
+  `category_id` int NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `content` text NOT NULL,
+  `is_pinned` tinyint(1) DEFAULT '0',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Dumping data for table `discussion_topics`
+--
+
+INSERT INTO `discussion_topics` (`id`, `user_id`, `category_id`, `title`, `content`, `is_pinned`, `created_at`, `updated_at`) VALUES
+(2, 16, 1, 'PGT CUP', 'Hai wkwkwkkwkwkwkwkwkwkwkwkkwkwkwkwkkwkwkwkwkkwkwk', 1, '2025-11-08 19:39:22', '2025-11-08 19:52:50');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `jadwal_kegiatan`
+--
+
+CREATE TABLE `jadwal_kegiatan` (
+  `id` int NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `description` text,
+  `start_datetime` datetime NOT NULL,
+  `end_datetime` datetime NOT NULL,
+  `category` varchar(50) NOT NULL,
+  `created_by` varchar(100) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `kas`
+--
+
+CREATE TABLE `kas` (
+  `id_kas` int NOT NULL,
+  `tanggal` date NOT NULL,
+  `jenis` enum('pemasukan','pengeluaran') NOT NULL,
+  `jumlah` decimal(12,2) NOT NULL,
+  `keterangan` text,
+  `id_kategori` int DEFAULT NULL,
+  `dibuat_oleh` int DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Dumping data for table `kas`
+--
+
+INSERT INTO `kas` (`id_kas`, `tanggal`, `jenis`, `jumlah`, `keterangan`, `id_kategori`, `dibuat_oleh`) VALUES
+(1, '2025-10-10', 'pemasukan', 15000.00, 'wajib', 1, 2),
+(3, '2025-10-13', 'pengeluaran', 20000.00, 'Semir', 3, 16),
+(5, '2025-11-05', 'pengeluaran', 28000.00, 'Maintance ', 3, 16),
+(6, '2025-11-05', 'pengeluaran', 37500.00, 'Ultah Bu Ita', 3, 16),
+(7, '2025-11-17', 'pengeluaran', 23000.00, 'Stop Kontak', 3, 16);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `kas_kategori`
+--
+
+CREATE TABLE `kas_kategori` (
+  `id_kategori` int NOT NULL,
+  `nama` varchar(150) NOT NULL,
+  `keterangan` text,
+  `dibuat_oleh` int DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Dumping data for table `kas_kategori`
+--
+
+INSERT INTO `kas_kategori` (`id_kategori`, `nama`, `keterangan`, `dibuat_oleh`, `created_at`) VALUES
+(1, 'Kas Bulanan', 'Wajib dibayar', 2, '2025-10-13 04:12:00'),
+(3, 'Peralatan', 'Alat', 16, '2025-10-13 06:24:58');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `pembayaran`
+--
+
+CREATE TABLE `pembayaran` (
+  `id_pembayaran` int NOT NULL,
+  `id_user` int DEFAULT NULL,
+  `id_kas` int DEFAULT NULL,
+  `id_kategori` int DEFAULT NULL,
+  `status` enum('lunas','telat') NOT NULL,
+  `tanggal_bayar` date NOT NULL,
+  `jumlah` decimal(12,2) DEFAULT NULL,
+  `bukti` varchar(255) DEFAULT NULL,
+  `ditambahkan_oleh` int DEFAULT NULL,
+  `dibuat_oleh` int DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Dumping data for table `pembayaran`
+--
+
+INSERT INTO `pembayaran` (`id_pembayaran`, `id_user`, `id_kas`, `id_kategori`, `status`, `tanggal_bayar`, `jumlah`, `bukti`, `ditambahkan_oleh`, `dibuat_oleh`) VALUES
+(10, 9, 1, 1, 'lunas', '2025-10-08', 15000.00, 'pembayaran_9_20251008_022542.jpg', 16, NULL),
+(11, 15, 1, 1, 'lunas', '2025-10-08', 15000.00, 'pembayaran_15_20251008_022641.jpg', 16, NULL),
+(12, 5, 1, 1, 'lunas', '2025-10-08', 15000.00, 'pembayaran_5_20251008_022721.jpg', 16, NULL),
+(13, 14, 1, 1, 'lunas', '2025-10-08', 15000.00, 'pembayaran_14_20251008_022746.jpg', 16, NULL),
+(14, 8, 1, 1, 'lunas', '2025-10-09', 15000.00, NULL, 16, NULL),
+(15, 12, 1, 1, 'lunas', '2025-10-09', 15000.00, NULL, 16, NULL),
+(16, 3, 1, 1, 'telat', '2025-11-13', 15000.00, NULL, 16, NULL),
+(17, 13, 1, 1, 'lunas', '2025-10-10', 15000.00, NULL, 16, NULL),
+(18, 4, 1, 1, 'lunas', '2025-10-10', 15000.00, NULL, 16, NULL),
+(19, 5, NULL, 1, 'lunas', '2025-11-05', 15000.00, NULL, 16, NULL),
+(20, 8, NULL, 1, 'lunas', '2025-11-06', 15000.00, NULL, 16, NULL),
+(21, 15, NULL, 1, 'lunas', '2025-11-10', 15000.00, NULL, 16, NULL),
+(22, 17, 1, 1, 'lunas', '2025-10-10', 15000.00, NULL, 16, NULL),
+(23, 7, 1, 1, 'telat', '2025-10-11', 15000.00, NULL, 16, NULL),
+(24, 7, NULL, 1, 'lunas', '2025-11-09', 15000.00, NULL, 16, NULL),
+(27, 3, 1, 1, 'lunas', '2025-10-10', 15000.00, NULL, 16, NULL),
+(28, 3, NULL, 1, 'lunas', '2025-12-01', 15000.00, NULL, 16, NULL);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `pengumuman`
+--
+
+CREATE TABLE `pengumuman` (
+  `id_pengumuman` int NOT NULL,
+  `judul` varchar(100) NOT NULL,
+  `isi` text NOT NULL,
+  `tanggal` date NOT NULL,
+  `dibuat_oleh` int DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `ranking`
+--
+
+CREATE TABLE `ranking` (
+  `id_ranking` int NOT NULL,
+  `id_user` int DEFAULT NULL,
+  `jumlah_rajinnya` int DEFAULT '0',
+  `jumlah_telatnya` int DEFAULT '0',
+  `poin` int DEFAULT '0'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Dumping data for table `ranking`
+--
+
+INSERT INTO `ranking` (`id_ranking`, `id_user`, `jumlah_rajinnya`, `jumlah_telatnya`, `poin`) VALUES
+(1, 5, 2, 0, 20),
+(2, 15, 2, 0, 20),
+(3, 9, 1, 0, 10),
+(4, 14, 1, 0, 10),
+(5, 8, 2, 0, 20),
+(6, 12, 1, 0, 10),
+(7, 3, 2, 1, 15),
+(8, 13, 1, 0, 10),
+(9, 4, 1, 0, 10),
+(10, 17, 1, 0, 10),
+(11, 7, 1, 1, 5);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `settings`
+--
+
+CREATE TABLE `settings` (
+  `id` int NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `value` varchar(255) NOT NULL,
+  `description` text
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Dumping data for table `settings`
+--
+
+INSERT INTO `settings` (`id`, `name`, `value`, `description`) VALUES
+(1, 'jatuh_tempo_harian', '10', 'Tanggal jatuh tempo iuran bulanan (default: 10)'),
+(2, 'iuran_perminggu', '10000', 'Jumlah iuran per minggu dalam rupiah'),
+(3, 'nama_kelas', 'Kelas XII RPL 1', 'Nama kelas'),
+(4, 'tahun_ajaran', '2024/2025', 'Tahun ajaran aktif');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `user`
+--
+
+CREATE TABLE `user` (
+  `id_user` int NOT NULL,
+  `nama_lengkap` varchar(100) NOT NULL,
+  `username` varchar(50) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `role` enum('admin','operator','user') NOT NULL,
+  `status` enum('aktif','nonaktif') DEFAULT 'aktif',
+  `profile_picture` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `background_picture` varchar(255) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Dumping data for table `user`
+--
+
+INSERT INTO `user` (`id_user`, `nama_lengkap`, `username`, `password`, `role`, `status`, `profile_picture`, `created_at`, `background_picture`) VALUES
+(1, 'Ahmad Fauzi', 'Admin', '$2y$12$XqwvEchgE5/w1b8t7wbO0OhHBXy.czaYz1Vt5hCiyi2SGhk8bKZo.', 'admin', 'aktif', NULL, '2025-10-03 02:50:04', NULL),
+(2, 'Dewi Tresnafuri', 'Ena', '$2y$12$9g8zAN09mvXNIj.Qvl4ziO2cbhxAqB9UnbDZa2/klKaK7rk/2eHoK', 'operator', 'aktif', NULL, '2025-10-03 02:58:37', NULL),
+(3, 'Raihan Ananda Permadi', 'Raihan', '$2y$12$bwijfTXaevh7dG2JmNYY3OnrjbuEMNWyaqxdzaU1ThnDAme0csxLq', 'user', 'aktif', NULL, '2025-10-03 07:57:37', NULL),
+(4, 'Aprilia Dwiyani', 'April', '$2y$12$dCQjNDyM8LVio9y43ecNmuCJEU5NZ/4hoeHsD.bAW4vbPdGPMbxNy', 'user', 'aktif', NULL, '2025-10-06 02:11:22', NULL),
+(5, 'Hagi Sugara Putra', 'Hagi', '$2y$12$9HIfFgZ.efppOkrxoNyncO.MkWcOO0RhHLEpgXbd/3kLmN1ocH6Vm', 'user', 'aktif', NULL, '2025-10-06 02:29:34', NULL),
+(6, 'Syawaludin Nopaliansyah', 'Syawal', '$2y$12$XTokEFNOKA2lKvMZwtrdFOCd8sskRr0cRgvno8wSzN/TJO0UOiVWK', 'user', 'aktif', NULL, '2025-10-06 02:30:18', NULL),
+(7, 'Azmi Anindya', 'Azmi', '$2y$12$gYXy6IhUC6hssCktjX2sV.A1Yokv7jM/rGjGbo/xkU02zyNE8b.gW', 'user', 'aktif', NULL, '2025-10-06 02:30:50', NULL),
+(8, 'Danar Wahyu Sudrajat', 'Danar', '$2y$12$MldrtmBEH6s53t3FIB1djOwvYVkn7FjYe67wK9Y/A7Gd0U.ol.Xti', 'user', 'aktif', NULL, '2025-10-06 02:31:13', NULL),
+(9, 'Muhammad Pauzul Ulum', 'Ulum', '$2y$12$sgNBft.s/mDPafyqasJcoOHdBnZ71PJHFPPZI1CII6EwVJgHev/9q', 'user', 'aktif', NULL, '2025-10-06 02:34:18', NULL),
+(10, 'Erintya Dwi Pangestika', 'Erin', '$2y$12$exjghzY2BICQno.Sw0vgnu7SChGnL1TLN4dY4K9j91/U6WKe5Y3Jm', 'user', 'aktif', NULL, '2025-10-06 02:34:48', NULL),
+(11, 'Ferdi Febriansyah', 'Ferdi', '$2y$12$HUBrvtVJdcX7/uf3eVuT4OHvK/tcWhRnnPil.HYpYlACcD9yWIRji', 'user', 'aktif', NULL, '2025-10-06 02:35:27', NULL),
+(12, 'Muhammad Dzaky Ramadhani', 'Dzaky', '$2y$12$iRDNBa7aqVy4qBo5BJ/61OZR4IeRg93Tqi5PtfxQZx1oSYGPQcDO2', 'user', 'aktif', NULL, '2025-10-06 02:36:04', NULL),
+(13, 'Mohammad Alvin Makmun', 'Alvin', '$2y$12$NWzaTst2BcdvIdcUXKbulORHcTOt0trPPQmQYHJoiOAiH2F5KyUSC', 'user', 'aktif', NULL, '2025-10-06 02:36:30', NULL),
+(14, 'Najwan Caesar Firstiansyah', 'Najwan', '$2y$12$2bappoY4X4ehMABudwols.s1x3cS2e1WirkygjQy346QIEhWJTAZ2', 'user', 'aktif', NULL, '2025-10-06 02:38:47', NULL),
+(15, 'Tangguh Putra Mahardika', 'Tangguh', '$2y$12$m/Hc3MEXqVEDMWi7SGipXe5NvcT1pFCqKmmblhfNMuAhobvsWtHEW', 'user', 'aktif', NULL, '2025-10-06 02:39:16', NULL),
+(16, 'Ahmad Fauzi', 'Ahmad', '$2y$12$1eJ4Wxup5Ng2CY5T3OANd.ZhiuiTbPEIFayRzwG/hlS9PzRuKsXR6', 'operator', 'aktif', NULL, '2025-10-06 14:20:50', NULL),
+(17, 'Ahmad Fauzi', 'Fauzi', '$2y$12$.3wVY3wwjMWooG3z2tgz4u.Ukqogwj7e4Pvw9XyTiaOgrAvNT0h6W', 'user', 'aktif', 'download.jpg', '2025-11-05 06:25:41', 'download (1).jpg');
+
+--
+-- Indexes for dumped tables
+--
+
+--
+-- Indexes for table `agenda`
+--
+ALTER TABLE `agenda`
+  ADD PRIMARY KEY (`id_agenda`),
+  ADD KEY `dibuat_oleh` (`dibuat_oleh`);
+
+--
+-- Indexes for table `announcements`
+--
+ALTER TABLE `announcements`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `chat`
+--
+ALTER TABLE `chat`
+  ADD PRIMARY KEY (`id_chat`),
+  ADD KEY `id_user` (`id_user`),
+  ADD KEY `fk_chat_topic` (`topic_id`);
+
+--
+-- Indexes for table `discussion_categories`
+--
+ALTER TABLE `discussion_categories`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `name` (`name`);
+
+--
+-- Indexes for table `discussion_posts`
+--
+ALTER TABLE `discussion_posts`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `topic_id` (`topic_id`),
+  ADD KEY `user_id` (`user_id`),
+  ADD KEY `parent_post_id` (`parent_post_id`);
+
+--
+-- Indexes for table `discussion_topics`
+--
+ALTER TABLE `discussion_topics`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `user_id` (`user_id`),
+  ADD KEY `category_id` (`category_id`);
+
+--
+-- Indexes for table `jadwal_kegiatan`
+--
+ALTER TABLE `jadwal_kegiatan`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `kas`
+--
+ALTER TABLE `kas`
+  ADD PRIMARY KEY (`id_kas`),
+  ADD KEY `dibuat_oleh` (`dibuat_oleh`);
+
+--
+-- Indexes for table `kas_kategori`
+--
+ALTER TABLE `kas_kategori`
+  ADD PRIMARY KEY (`id_kategori`);
+
+--
+-- Indexes for table `pembayaran`
+--
+ALTER TABLE `pembayaran`
+  ADD PRIMARY KEY (`id_pembayaran`),
+  ADD KEY `id_user` (`id_user`),
+  ADD KEY `id_kas` (`id_kas`),
+  ADD KEY `id_kategori` (`id_kategori`),
+  ADD KEY `dibuat_oleh` (`dibuat_oleh`);
+
+--
+-- Indexes for table `pengumuman`
+--
+ALTER TABLE `pengumuman`
+  ADD PRIMARY KEY (`id_pengumuman`),
+  ADD KEY `dibuat_oleh` (`dibuat_oleh`);
+
+--
+-- Indexes for table `ranking`
+--
+ALTER TABLE `ranking`
+  ADD PRIMARY KEY (`id_ranking`),
+  ADD KEY `id_user` (`id_user`);
+
+--
+-- Indexes for table `settings`
+--
+ALTER TABLE `settings`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `name` (`name`);
+
+--
+-- Indexes for table `user`
+--
+ALTER TABLE `user`
+  ADD PRIMARY KEY (`id_user`),
+  ADD UNIQUE KEY `username` (`username`);
+
+--
+-- AUTO_INCREMENT for dumped tables
+--
+
+--
+-- AUTO_INCREMENT for table `agenda`
+--
+ALTER TABLE `agenda`
+  MODIFY `id_agenda` int NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `announcements`
+--
+ALTER TABLE `announcements`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT for table `chat`
+--
+ALTER TABLE `chat`
+  MODIFY `id_chat` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=22;
+
+--
+-- AUTO_INCREMENT for table `discussion_categories`
+--
+ALTER TABLE `discussion_categories`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- AUTO_INCREMENT for table `discussion_posts`
+--
+ALTER TABLE `discussion_posts`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `discussion_topics`
+--
+ALTER TABLE `discussion_topics`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT for table `jadwal_kegiatan`
+--
+ALTER TABLE `jadwal_kegiatan`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `kas`
+--
+ALTER TABLE `kas`
+  MODIFY `id_kas` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+
+--
+-- AUTO_INCREMENT for table `kas_kategori`
+--
+ALTER TABLE `kas_kategori`
+  MODIFY `id_kategori` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+
+--
+-- AUTO_INCREMENT for table `pembayaran`
+--
+ALTER TABLE `pembayaran`
+  MODIFY `id_pembayaran` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=29;
+
+--
+-- AUTO_INCREMENT for table `pengumuman`
+--
+ALTER TABLE `pengumuman`
+  MODIFY `id_pengumuman` int NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `ranking`
+--
+ALTER TABLE `ranking`
+  MODIFY `id_ranking` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+
+--
+-- AUTO_INCREMENT for table `settings`
+--
+ALTER TABLE `settings`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+
+--
+-- AUTO_INCREMENT for table `user`
+--
+ALTER TABLE `user`
+  MODIFY `id_user` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=18;
+
+--
+-- Constraints for dumped tables
+--
+
+--
+-- Constraints for table `agenda`
+--
+ALTER TABLE `agenda`
+  ADD CONSTRAINT `agenda_ibfk_1` FOREIGN KEY (`dibuat_oleh`) REFERENCES `user` (`id_user`);
+
+--
+-- Constraints for table `chat`
+--
+ALTER TABLE `chat`
+  ADD CONSTRAINT `chat_ibfk_1` FOREIGN KEY (`id_user`) REFERENCES `user` (`id_user`),
+  ADD CONSTRAINT `fk_chat_topic` FOREIGN KEY (`topic_id`) REFERENCES `discussion_topics` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `discussion_posts`
+--
+ALTER TABLE `discussion_posts`
+  ADD CONSTRAINT `discussion_posts_ibfk_1` FOREIGN KEY (`topic_id`) REFERENCES `discussion_topics` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `discussion_posts_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `user` (`id_user`) ON DELETE CASCADE,
+  ADD CONSTRAINT `discussion_posts_ibfk_3` FOREIGN KEY (`parent_post_id`) REFERENCES `discussion_posts` (`id`) ON DELETE SET NULL;
+
+--
+-- Constraints for table `discussion_topics`
+--
+ALTER TABLE `discussion_topics`
+  ADD CONSTRAINT `discussion_topics_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`id_user`) ON DELETE CASCADE,
+  ADD CONSTRAINT `discussion_topics_ibfk_2` FOREIGN KEY (`category_id`) REFERENCES `discussion_categories` (`id`) ON DELETE RESTRICT;
+
+--
+-- Constraints for table `kas`
+--
+ALTER TABLE `kas`
+  ADD CONSTRAINT `kas_ibfk_1` FOREIGN KEY (`dibuat_oleh`) REFERENCES `user` (`id_user`);
+
+--
+-- Constraints for table `pembayaran`
+--
+ALTER TABLE `pembayaran`
+  ADD CONSTRAINT `pembayaran_ibfk_1` FOREIGN KEY (`id_user`) REFERENCES `user` (`id_user`),
+  ADD CONSTRAINT `pembayaran_ibfk_2` FOREIGN KEY (`id_kas`) REFERENCES `kas` (`id_kas`);
+
+--
+-- Constraints for table `pengumuman`
+--
+ALTER TABLE `pengumuman`
+  ADD CONSTRAINT `pengumuman_ibfk_1` FOREIGN KEY (`dibuat_oleh`) REFERENCES `user` (`id_user`);
+
+--
+-- Constraints for table `ranking`
+--
+ALTER TABLE `ranking`
+  ADD CONSTRAINT `ranking_ibfk_1` FOREIGN KEY (`id_user`) REFERENCES `user` (`id_user`);
+COMMIT;
+
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
