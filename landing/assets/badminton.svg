@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" aria-labelledby="title desc">
+  <title id="title">Badminton emblem (placeholder)</title>
+  <desc id="desc">Simple stylized badminton shuttlecock emblem on green circle background.</desc>
+  <rect width="128" height="128" rx="16" fill="none"/>
+  <circle cx="64" cy="64" r="60" fill="#20c997" />
+  <!-- shuttlecock: three feather shapes + cork -->
+  <g transform="translate(18,12) scale(0.9)" fill="#ffffff">
+    <path d="M56 20c6 0 18 10 18 10s-6 6-10 10-14 4-20 0-8-8-6-12 6-8 18-8z" opacity="0.98"/>
+    <path d="M36 42c6-4 18-8 30 0 0 0-6 8-16 12-10 4-20 2-26-4-6-6-2-8 12-8z" opacity="0.9"/>
+    <circle cx="62" cy="50" r="6" fill="#ffffff" />
+    <!-- handle -->
+    <rect x="42" y="70" width="8" height="28" rx="3" transform="rotate(-22 46 82)" fill="#6c4b2a" />
+    <rect x="48" y="98" width="6" height="18" rx="3" transform="rotate(-22 51 107)" fill="#4b341f" />
+  </g>
+</svg>

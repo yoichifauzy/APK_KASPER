@@ -5,10 +5,10 @@ include '../config/database.php';
 $response = ['status' => 'error', 'message' => 'Invalid request'];
 
 if (isset($_GET['topic_id'])) {
-    $topic_id = mysqli_real_escape_string($conn, $_GET['topic_id']);
+  $topic_id = mysqli_real_escape_string($conn, $_GET['topic_id']);
 
-    // Fetch messages for the last 3 hours for the specific topic
-    $query = "SELECT
+  // Fetch messages for the last 3 hours for the specific topic
+  $query = "SELECT
                 c.pesan,
                 c.waktu,
                 c.id_user,
@@ -24,18 +24,17 @@ if (isset($_GET['topic_id'])) {
               ORDER BY
                 c.waktu ASC";
 
-    $result = mysqli_query($conn, $query);
+  $result = mysqli_query($conn, $query);
 
-    if ($result) {
-        $messages = [];
-        while ($row = mysqli_fetch_assoc($result)) {
-            $messages[] = $row;
-        }
-        $response = ['status' => 'success', 'messages' => $messages];
-    } else {
-        $response = ['status' => 'error', 'message' => 'Failed to fetch messages: ' . mysqli_error($conn)];
+  if ($result) {
+    $messages = [];
+    while ($row = mysqli_fetch_assoc($result)) {
+      $messages[] = $row;
     }
+    $response = ['status' => 'success', 'messages' => $messages];
+  } else {
+    $response = ['status' => 'error', 'message' => 'Failed to fetch messages: ' . mysqli_error($conn)];
+  }
 }
 
 echo json_encode($response);
-?>

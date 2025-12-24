@@ -9,7 +9,15 @@ if (isset($_POST['tambah'])) {
     $nama_lengkap = $_POST['nama_lengkap'];
     $username = $_POST['username'];
     $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
-    $role = $_POST['role'];
+    $role = strtolower(trim($_POST['role']));
+    $allowedRoles = ['admin', 'operator', 'user'];
+    if (!in_array($role, $allowedRoles, true)) $role = 'user';
+    // Prevent non-admin users from creating admin accounts
+    if (isset($_SESSION['role']) && $_SESSION['role'] !== 'admin' && $role === 'admin') {
+        $_SESSION['flash'] = ['type' => 'danger', 'title' => 'Gagal', 'message' => 'Anda tidak diizinkan membuat akun dengan role admin.'];
+        header("Location: kelola_user.php");
+        exit;
+    }
     $status = 'aktif';
 
     $sql = "INSERT INTO user (nama_lengkap, username, password, role, status) VALUES (?, ?, ?, ?, ?)";
@@ -18,7 +26,8 @@ if (isset($_POST['tambah'])) {
     if ($stmt->execute()) {
         $_SESSION['flash'] = ['type' => 'success', 'title' => 'Berhasil', 'message' => 'User berhasil ditambahkan.'];
     } else {
-        $_SESSION['flash'] = ['type' => 'danger', 'title' => 'Gagal', 'message' => 'Gagal menambahkan user.'];
+        $err = $stmt->error ?: $conn->error;
+        $_SESSION['flash'] = ['type' => 'danger', 'title' => 'Gagal', 'message' => 'Gagal menambahkan user. ' . ($err ? 'Error: ' . $err : '')];
     }
     header("Location: kelola_user.php");
     exit;
@@ -29,7 +38,15 @@ if (isset($_POST['edit'])) {
     $id = $_POST['id_user'];
     $nama_lengkap = $_POST['nama_lengkap'];
     $username = $_POST['username'];
-    $role = $_POST['role'];
+    $role = strtolower(trim($_POST['role']));
+    $allowedRoles = ['admin', 'operator', 'user'];
+    if (!in_array($role, $allowedRoles, true)) $role = 'user';
+    // Prevent non-admin users from assigning admin role
+    if (isset($_SESSION['role']) && $_SESSION['role'] !== 'admin' && $role === 'admin') {
+        $_SESSION['flash'] = ['type' => 'danger', 'title' => 'Gagal', 'message' => 'Anda tidak diizinkan mengubah role menjadi admin.'];
+        header("Location: kelola_user.php");
+        exit;
+    }
 
     if (!empty($_POST['password'])) {
         $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
@@ -45,7 +62,8 @@ if (isset($_POST['edit'])) {
     if ($stmt->execute()) {
         $_SESSION['flash'] = ['type' => 'success', 'title' => 'Berhasil', 'message' => 'Data user berhasil diperbarui.'];
     } else {
-        $_SESSION['flash'] = ['type' => 'danger', 'title' => 'Gagal', 'message' => 'Gagal memperbarui data user.'];
+        $err = $stmt->error ?: $conn->error;
+        $_SESSION['flash'] = ['type' => 'danger', 'title' => 'Gagal', 'message' => 'Gagal memperbarui data user. ' . ($err ? 'Error: ' . $err : '')];
     }
     header("Location: kelola_user.php");
     exit;
@@ -149,14 +167,19 @@ if ($res_counts) {
                     <div class="row">
                         <div class="col-md-4">
                             <div class="card">
-                                <div class="card-header"><div class="card-title">Tambah User</div></div>
+                                <div class="card-header">
+                                    <div class="card-title">Tambah User</div>
+                                </div>
                                 <div class="card-body">
                                     <form method="post" id="form-tambah">
                                         <input type="hidden" name="tambah" value="1">
                                         <div class="form-group"><label>Nama Lengkap</label><input type="text" name="nama_lengkap" class="form-control" placeholder="Nama Lengkap" required></div>
                                         <div class="form-group"><label>Username</label><input type="text" name="username" class="form-control" placeholder="Username" required></div>
                                         <div class="form-group"><label>Password</label><input type="password" name="password" class="form-control" placeholder="Password" required></div>
-                                        <div class="form-group"><label>Role</label><select name="role" class="form-select"><option value="user">User</option><option value="operator">Operator</option><option value="admin">Admin</option></select></div>
+                                        <div class="form-group"><label>Role</label><select name="role" class="form-select">
+                                                <option value="user">User</option>
+                                                <option value="operator">Operator</option>
+                                            </select></div>
                                         <div class="mt-2"><button type="submit" class="btn btn-primary">Tambah</button></div>
                                     </form>
                                 </div>
@@ -165,7 +188,9 @@ if ($res_counts) {
 
                         <div class="col-md-8">
                             <div class="card">
-                                <div class="card-header"><div class="card-title">Daftar User</div></div>
+                                <div class="card-header">
+                                    <div class="card-title">Daftar User</div>
+                                </div>
                                 <div class="card-body">
                                     <div class="table-responsive">
                                         <table id="kelola-user-table" class="display table table-striped table-hover" style="width:100%">
@@ -186,13 +211,13 @@ if ($res_counts) {
                                                         <td><?= htmlspecialchars($row['username']); ?></td>
                                                         <td><?= htmlspecialchars($row['role']); ?></td>
                                                         <td>
-                                                            <button class="btn btn-sm btn-warning edit-user-btn" 
-                                                                    data-bs-toggle="modal" 
-                                                                    data-bs-target="#editUserModal"
-                                                                    data-id="<?= $row['id_user']; ?>"
-                                                                    data-nama="<?= htmlspecialchars($row['nama_lengkap']); ?>"
-                                                                    data-username="<?= htmlspecialchars($row['username']); ?>"
-                                                                    data-role="<?= htmlspecialchars($row['role']); ?>">
+                                                            <button class="btn btn-sm btn-warning edit-user-btn"
+                                                                data-bs-toggle="modal"
+                                                                data-bs-target="#editUserModal"
+                                                                data-id="<?= $row['id_user']; ?>"
+                                                                data-nama="<?= htmlspecialchars($row['nama_lengkap']); ?>"
+                                                                data-username="<?= htmlspecialchars($row['username']); ?>"
+                                                                data-role="<?= htmlspecialchars($row['role']); ?>">
                                                                 Edit
                                                             </button>
                                                             <a href="kelola_user.php?hapus=<?= $row['id_user']; ?>" class="btn btn-sm btn-danger delete-user-btn">Hapus</a>
@@ -242,7 +267,6 @@ if ($res_counts) {
                             <select id="edit_role" name="role" class="form-select">
                                 <option value="user">User</option>
                                 <option value="operator">Operator</option>
-                                <option value="admin">Admin</option>
                             </select>
                         </div>
                     </div>
@@ -267,7 +291,10 @@ if ($res_counts) {
 
     <script>
         $(document).ready(function() {
-            $("#kelola-user-table").DataTable({ pageLength: 10, responsive: true });
+            $("#kelola-user-table").DataTable({
+                pageLength: 10,
+                responsive: true
+            });
 
             // Flash message notification
             var flash = <?php echo json_encode($flash ?? null); ?>;
@@ -277,14 +304,20 @@ if ($res_counts) {
                     message: flash.message || ''
                 }, {
                     type: flash.type || 'info',
-                    placement: { from: 'top', align: 'right' },
+                    placement: {
+                        from: 'top',
+                        align: 'right'
+                    },
                     delay: 4000,
-                    animate: { enter: 'animated fadeInDown', exit: 'animated fadeOutUp' }
+                    animate: {
+                        enter: 'animated fadeInDown',
+                        exit: 'animated fadeOutUp'
+                    }
                 });
             }
 
             // Populate Edit Modal
-            $('#editUserModal').on('show.bs.modal', function (event) {
+            $('#editUserModal').on('show.bs.modal', function(event) {
                 var button = $(event.relatedTarget);
                 var id = button.data('id');
                 var nama = button.data('nama');
@@ -304,30 +337,67 @@ if ($res_counts) {
                 e.preventDefault();
                 var form = this;
                 swal({
-                    title: 'Tambah user?', text: 'Pastikan data yang diinput sudah benar.', icon: 'warning',
-                    buttons: { cancel: { text: 'Batal', visible: true }, confirm: { text: 'Ya, Tambah' } }
-                }).then(willAdd => { if (willAdd) form.submit(); });
+                    title: 'Tambah user?',
+                    text: 'Pastikan data yang diinput sudah benar.',
+                    icon: 'warning',
+                    buttons: {
+                        cancel: {
+                            text: 'Batal',
+                            visible: true
+                        },
+                        confirm: {
+                            text: 'Ya, Tambah'
+                        }
+                    }
+                }).then(willAdd => {
+                    if (willAdd) form.submit();
+                });
             });
 
             $('#form-edit').on('submit', function(e) {
                 e.preventDefault();
                 var form = this;
                 swal({
-                    title: 'Simpan perubahan?', text: 'Data user akan diperbarui.', icon: 'info',
-                    buttons: { cancel: { text: 'Batal', visible: true }, confirm: { text: 'Ya, Simpan' } }
-                }).then(willSave => { if (willSave) form.submit(); });
+                    title: 'Simpan perubahan?',
+                    text: 'Data user akan diperbarui.',
+                    icon: 'info',
+                    buttons: {
+                        cancel: {
+                            text: 'Batal',
+                            visible: true
+                        },
+                        confirm: {
+                            text: 'Ya, Simpan'
+                        }
+                    }
+                }).then(willSave => {
+                    if (willSave) form.submit();
+                });
             });
 
             $(document).on('click', '.delete-user-btn', function(e) {
                 e.preventDefault();
                 var href = $(this).attr('href');
                 swal({
-                    title: 'Hapus user?', text: 'Data yang dihapus tidak bisa dikembalikan.', icon: 'warning',
-                    buttons: { cancel: { text: 'Batal', visible: true }, confirm: { text: 'Ya, Hapus' } },
+                    title: 'Hapus user?',
+                    text: 'Data yang dihapus tidak bisa dikembalikan.',
+                    icon: 'warning',
+                    buttons: {
+                        cancel: {
+                            text: 'Batal',
+                            visible: true
+                        },
+                        confirm: {
+                            text: 'Ya, Hapus'
+                        }
+                    },
                     dangerMode: true
-                }).then(willDelete => { if (willDelete) window.location.href = href; });
+                }).then(willDelete => {
+                    if (willDelete) window.location.href = href;
+                });
             });
         });
     </script>
 </body>
+
 </html>

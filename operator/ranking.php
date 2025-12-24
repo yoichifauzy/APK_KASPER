@@ -150,68 +150,58 @@ foreach ($students as $student) {
 }
 
 // --- Data for Chart ---
-$chart_data = [];
-$lunas_payments_by_bill = []; // To store completion dates for each bill
+// New logic: base ranking on `pembayaran` table using `tanggal_bayar`.
+// Find users who have a payment row with status='lunas' within the selected month/year.
+// For each user, get their earliest `tanggal_bayar` (fastest) and latest `tanggal_bayar` (slowest) within the month.
 
-foreach ($bills as $bill) {
-    $bill_id = $bill['id_kas'];
-    $required_amount = $bill['jumlah'];
-
-    $lunas_payments_by_bill[$bill_id] = [];
-
-    foreach ($students as $student) {
-        $id_user = $student['id_user'];
-
-        // Calculate total paid for this student and this bill
-        $total_paid = 0;
-        $stmt_paid = $conn->prepare("SELECT SUM(jumlah) FROM pembayaran WHERE id_user = ? AND id_kas = ?");
-        $stmt_paid->bind_param("ii", $id_user, $bill_id);
-        $stmt_paid->execute();
-        $stmt_paid->bind_result($sum_paid);
-        if ($stmt_paid->fetch()) {
-            $total_paid = $sum_paid ?? 0;
-        }
-        $stmt_paid->close();
-
-        if ($total_paid >= $required_amount) {
-            // Find the date when they became 'lunas' for this specific bill
-            // This is the MAX(tanggal_bayar) of all payments for this bill
-            $completion_date = null;
-            $stmt_comp_date = $conn->prepare("SELECT MAX(tanggal_bayar) FROM pembayaran WHERE id_user = ? AND id_kas = ?");
-            $stmt_comp_date->bind_param("ii", $id_user, $bill_id);
-            $stmt_comp_date->execute();
-            $stmt_comp_date->bind_result($max_date);
-            if ($stmt_comp_date->fetch()) {
-                $completion_date = $max_date;
-            }
-            $stmt_comp_date->close();
-
-            if ($completion_date) {
-                $lunas_payments_by_bill[$bill_id][] = [
-                    'nama_lengkap' => $student['nama_lengkap'],
-                    'completion_date' => $completion_date
-                ];
-            }
-        }
+$payers_in_month = [];
+$stmt_payers = $conn->prepare("SELECT p.id_user, COALESCE(u.nama_lengkap, '') AS nama_lengkap, MIN(p.tanggal_bayar) AS first_paid, MAX(p.tanggal_bayar) AS last_paid FROM pembayaran p LEFT JOIN user u ON p.id_user = u.id_user WHERE p.status = 'lunas' AND MONTH(p.tanggal_bayar) = ? AND YEAR(p.tanggal_bayar) = ? GROUP BY p.id_user");
+if ($stmt_payers) {
+    $stmt_payers->bind_param('ii', $current_month, $current_year);
+    $stmt_payers->execute();
+    $res_payers = $stmt_payers->get_result();
+    while ($rp = $res_payers->fetch_assoc()) {
+        $payers_in_month[] = $rp; // contains id_user, nama_lengkap, first_paid, last_paid
     }
+    $stmt_payers->close();
 }
 
-// Aggregate and sort for chart
-$all_lunas_payers = [];
-foreach ($lunas_payments_by_bill as $bill_id => $payers) {
-    foreach ($payers as $payer) {
-        $all_lunas_payers[] = $payer;
-    }
-}
+// Prepare sorted lists
+$all_lunas_payers = $payers_in_month; // reuse variable name for compatibility with debug
 
-// Sort by completion date
+// Sort by first_paid ascending (fastest)
 usort($all_lunas_payers, function ($a, $b) {
-    return strtotime($a['completion_date']) - strtotime($b['completion_date']);
+    return strtotime($a['first_paid']) - strtotime($b['first_paid']);
 });
-
-// Get top 3 fastest and bottom 3 slowest
 $fastest_payers = array_slice($all_lunas_payers, 0, 3);
-$slowest_payers = array_slice($all_lunas_payers, max(0, count($all_lunas_payers) - 3));
+
+// For slowest, sort by last_paid descending
+$all_lunas_payers_desc = $payers_in_month;
+usort($all_lunas_payers_desc, function ($a, $b) {
+    return strtotime($b['last_paid']) - strtotime($a['last_paid']);
+});
+$slowest_payers = array_slice($all_lunas_payers_desc, 0, 3);
+
+// Debug info (visible when ?debug_ranking=1)
+$debug_ranking = isset($_GET['debug_ranking']) && $_GET['debug_ranking'] == '1';
+$debug_counts = [];
+// If there are bills (kas) this month, compute per-bill count of 'lunas' payments for debugging.
+if (!empty($kas_ids)) {
+    foreach ($kas_ids as $bill_id) {
+        $stmt_cnt = $conn->prepare("SELECT COUNT(*) AS cnt FROM pembayaran WHERE id_kas = ? AND status = 'lunas'");
+        if ($stmt_cnt) {
+            $stmt_cnt->bind_param('i', $bill_id);
+            $stmt_cnt->execute();
+            $res_cnt = $stmt_cnt->get_result();
+            $row_cnt = $res_cnt->fetch_assoc();
+            $debug_counts[$bill_id] = intval($row_cnt['cnt'] ?? 0);
+            $stmt_cnt->close();
+        } else {
+            $debug_counts[$bill_id] = 0;
+        }
+    }
+}
+
 
 
 
@@ -312,6 +302,20 @@ $slowest_payers = array_slice($all_lunas_payers, max(0, count($all_lunas_payers)
                                 </form>
                             </div>
                             <div class="card-body">
+                                <?php if (!empty($debug_ranking)): ?>
+                                    <div class="alert alert-info">
+                                        <strong>Debug Ranking:</strong>
+                                        <div>Jumlah tagihan (kas) bulan ini: <?= count($bills) ?></div>
+                                        <div>Total penyelesaian (lunas) ditemukan: <?= count($all_lunas_payers) ?></div>
+                                        <div class="mt-2">Per-bill completions:
+                                            <ul>
+                                                <?php foreach ($debug_counts as $bid => $cnt): ?>
+                                                    <li>id_kas <?= htmlspecialchars($bid) ?>: <?= intval($cnt) ?> selesai</li>
+                                                <?php endforeach; ?>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
                                 <div class="table-responsive">
                                     <table id="rankingTable" class="table table-striped table-hover" style="width:100%">
                                         <thead>
@@ -381,8 +385,18 @@ $slowest_payers = array_slice($all_lunas_payers, max(0, count($all_lunas_payers)
                                                                 <td><?= htmlspecialchars($payer['nama_lengkap']) ?></td>
                                                                 <td>
                                                                     <?php
-                                                                    $date = new DateTime($payer['completion_date']);
-                                                                    echo $date->format('d-m-Y H:i:s');
+                                                                    // fastest list uses 'first_paid'
+                                                                    $dt = $payer['first_paid'] ?? null;
+                                                                    if ($dt) {
+                                                                        $date = new DateTime($dt);
+                                                                        if (intval($current_month) >= 10) {
+                                                                            echo $date->format('d-m-Y');
+                                                                        } else {
+                                                                            echo $date->format('d-m-Y H:i:s');
+                                                                        }
+                                                                    } else {
+                                                                        echo '-';
+                                                                    }
                                                                     ?>
                                                                 </td>
                                                             </tr>
@@ -424,8 +438,18 @@ $slowest_payers = array_slice($all_lunas_payers, max(0, count($all_lunas_payers)
                                                                 <td><?= htmlspecialchars($payer['nama_lengkap']) ?></td>
                                                                 <td>
                                                                     <?php
-                                                                    $date = new DateTime($payer['completion_date']);
-                                                                    echo $date->format('d-m-Y H:i:s');
+                                                                    // slowest list uses 'last_paid'
+                                                                    $dt2 = $payer['last_paid'] ?? null;
+                                                                    if ($dt2) {
+                                                                        $date = new DateTime($dt2);
+                                                                        if (intval($current_month) >= 10) {
+                                                                            echo $date->format('d-m-Y');
+                                                                        } else {
+                                                                            echo $date->format('d-m-Y H:i:s');
+                                                                        }
+                                                                    } else {
+                                                                        echo '-';
+                                                                    }
                                                                     ?>
                                                                 </td>
                                                             </tr>

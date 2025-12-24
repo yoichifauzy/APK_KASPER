@@ -27,12 +27,12 @@
         <div class="sidebar-content">
             <?php
             $current_page = basename($_SERVER['PHP_SELF']);
-            $cash_management_pages = ['transaksi_list.php', 'pembayaran.php', 'kelola_kas_kategori.php'];
+            $cash_management_pages = ['transaksi_list.php', 'pembayaran.php', 'kelola_kas_kategori.php', 'scan_barcode_cash.php'];
             $cash_payment_pages = ['payment_list.php', 'kelola_kas.php', 'ranking.php'];
-            $member_management_pages = ['cardmember.php', 'kelola_user.php'];
+            $member_management_pages = ['cardmember.php', 'kelola_user.php', 'point_history.php'];
             $announcement_agenda_pages = ['pengumuman.php', 'jadwal.php'];
             $financial_report_pages = ['cash_flow_report.php', 'balance_sheet.php'];
-            $discussion_forum_pages = ['index_forum.php', 'create_topic.php', 'my_discussion.php', 'view_category.php', 'user_reports.php'];
+            $discussion_forum_pages = ['index_forum.php', 'create_topic.php', 'my_discussion.php', 'discussion_admin.php', 'view_category.php'];
 
             $is_cash_management_active = in_array($current_page, $cash_management_pages);
             $is_cash_payment_active = in_array($current_page, $cash_payment_pages);
@@ -80,6 +80,12 @@
                                     <span>Add Categories</span>
                                 </a>
                             </li>
+                            <li class="<?php echo ($current_page == 'scan_barcode_cash.php') ? 'active' : ''; ?>">
+                                <a href="scan_barcode_cash.php">
+                                    <i class="fas fa-barcode"></i>
+                                    <span>Scan Barcode Cash</span>
+                                </a>
+                            </li>
                         </ul>
                     </div>
                 </li>
@@ -125,6 +131,12 @@
                                 <a href="cardmember.php">
                                     <i class="fas fa-id-card"></i>
                                     <span>Card Member</span>
+                                </a>
+                            </li>
+                            <li class="<?php echo ($current_page == 'point_history.php') ? 'active' : ''; ?>">
+                                <a href="point_history.php">
+                                    <i class="fas fa-history"></i>
+                                    <span>Point History</span>
                                 </a>
                             </li>
                             <li class="<?php echo ($current_page == 'kelola_user.php') ? 'active' : ''; ?>">
@@ -208,24 +220,30 @@
                                     <span>Topic Chats</span>
                                 </a>
                             </li>
+                            <li class="<?php echo ($current_page == 'discussion_admin.php') ? 'active' : ''; ?>">
+                                <a href="discussion_admin.php">
+                                    <i class="fas fa-user-shield"></i>
+                                    <span>Admin Discussion</span>
+                                </a>
                             <li class="<?php echo ($current_page == 'view_category.php') ? 'active' : ''; ?>">
                                 <a href="view_category.php">
                                     <i class="fas fa-folder-open"></i>
                                     <span>Discussion Category</span>
                                 </a>
                             </li>
-                            <li class="<?php echo ($current_page == 'user_reports.php') ? 'active' : ''; ?>">
-                                <a href="user_reports.php">
-                                    <i class="fas fa-chart-bar"></i>
-                                    <span>User Reports</span>
-                                </a>
-                            </li>
+
                         </ul>
                     </div>
                 </li>
 
                 <li class="nav-item">
-                    <a href="#" id="logout-link" data-logout-url="../auth/logout.php">
+                    <a href="edit_profile.php" class="<?php echo ($current_page == 'edit_profile.php') ? 'active' : ''; ?>">
+                        <i class="fas fa-user-edit"></i>
+                        <p>Edit Profile</p>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a id="logout-link" data-logout-url="../auth/logout.php">
                         <i class="fas fa-sign-out-alt"></i>
                         <p>Logout</p>
                     </a>

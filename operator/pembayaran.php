@@ -132,6 +132,131 @@ function handle_bukti_upload($file, $upload_dir = "upload/", $id_user = null, &$
     return null;
 }
 
+// generate a unique barcode string like PAY-{idUser}-{hex6}
+function generate_unique_barcode($conn, $id_user)
+{
+    $tries = 0;
+    do {
+        $hex = substr(bin2hex(random_bytes(3)), 0, 6);
+        $code = 'PAY-' . intval($id_user) . '-' . $hex;
+        $s = $conn->prepare("SELECT 1 FROM pembayaran WHERE barcode = ? LIMIT 1");
+        $s->bind_param('s', $code);
+        $s->execute();
+        $s->store_result();
+        $exists = $s->num_rows > 0;
+        $s->close();
+        $tries++;
+    } while ($exists && $tries < 6);
+    if ($exists) return null;
+    return $code;
+}
+
+// save barcode PNG to disk using TCPDF2D (QR) barcode helper; returns filename or null
+function save_barcode_png($code, $dest_dir)
+{
+    $tcpdf_file = __DIR__ . '/../vendor/tcpdf/tcpdf_barcodes_2d.php';
+    if (!is_file($tcpdf_file)) return null;
+    require_once $tcpdf_file;
+
+    if (!is_dir($dest_dir)) {
+        @mkdir($dest_dir, 0755, true);
+    }
+    $safe = preg_replace('/[^0-9A-Za-z_\-\.]*/', '_', $code);
+    $filename = 'barcode_' . $safe . '.png';
+    $path = rtrim($dest_dir, '/\\') . DIRECTORY_SEPARATOR . $filename;
+    try {
+        // generate QR (2D) barcode for better camera scanning (square)
+        $qr = new TCPDF2DBarcode($code, 'QRCODE,H');
+        // choose module size (pixel size per QR cell). Adjust if needed.
+        $module_size = 6;
+        $png = $qr->getBarcodePngData($module_size, $module_size, array(0, 0, 0));
+        if ($png === false) return null;
+
+        $bc_img = @imagecreatefromstring($png);
+        if (!$bc_img) {
+            if (file_put_contents($path, $png) !== false) {
+                return $filename;
+            }
+            return null;
+        }
+
+        $bc_w = imagesx($bc_img);
+        $bc_h = imagesy($bc_img);
+
+        // ensure square QR by taking max dimension
+        $side = max($bc_w, $bc_h);
+
+        // design: white background, title on top, date under title, QR centered
+        $padding = 18;
+        $title_space = 54; // space for title + date
+        $w = max(360, $side + ($padding * 2));
+        $h = $title_space + $side + ($padding * 2);
+
+        $canvas = imagecreatetruecolor($w, $h);
+        $white = imagecolorallocate($canvas, 255, 255, 255);
+        $black = imagecolorallocate($canvas, 0, 0, 0);
+        imagefilledrectangle($canvas, 0, 0, $w, $h, $white);
+
+        $title = 'BUKTI PEMBAYARAN';
+        $date_text = date('d M Y H:i');
+
+        $font_path_candidates = [
+            __DIR__ . '/../assets/fonts/PublicSans-Regular.ttf',
+            __DIR__ . '/../assets/fonts/roboto/Roboto-Regular.ttf',
+            __DIR__ . '/../assets/fonts/arial.ttf',
+        ];
+        $fontfile = null;
+        foreach ($font_path_candidates as $f) {
+            if (is_file($f)) {
+                $fontfile = $f;
+                break;
+            }
+        }
+
+        if ($fontfile && function_exists('imagettftext')) {
+            $title_size = 14;
+            $bbox = imagettfbbox($title_size, 0, $fontfile, $title);
+            $title_w = $bbox[2] - $bbox[0];
+            $x = intval(($w - $title_w) / 2);
+            imagettftext($canvas, $title_size, 0, $x, 20, $black, $fontfile, $title);
+
+            $date_size = 11;
+            $bbox2 = imagettfbbox($date_size, 0, $fontfile, $date_text);
+            $date_w = $bbox2[2] - $bbox2[0];
+            $x2 = intval(($w - $date_w) / 2);
+            imagettftext($canvas, $date_size, 0, $x2, 38, $black, $fontfile, $date_text);
+        } else {
+            $title_y = 6;
+            imagestring($canvas, 5, ($w - (imagefontwidth(5) * strlen($title))) / 2, $title_y, $title, $black);
+            imagestring($canvas, 3, ($w - (imagefontwidth(3) * strlen($date_text))) / 2, $title_y + 18, $date_text, $black);
+        }
+
+        // center QR on canvas
+        $dst_x = intval(($w - $side) / 2);
+        $dst_y = $title_space + $padding;
+        // if bc_img smaller than side, place it centered within the square area
+        $inner_x = intval(($side - $bc_w) / 2);
+        $inner_y = intval(($side - $bc_h) / 2);
+        // create a temporary square area to hold QR with white background
+        $qr_area = imagecreatetruecolor($side, $side);
+        imagefilledrectangle($qr_area, 0, 0, $side, $side, $white);
+        imagecopy($qr_area, $bc_img, $inner_x, $inner_y, 0, 0, $bc_w, $bc_h);
+        imagecopy($canvas, $qr_area, $dst_x, $dst_y, 0, 0, $side, $side);
+        imagedestroy($qr_area);
+
+        if (imagepng($canvas, $path)) {
+            imagedestroy($canvas);
+            imagedestroy($bc_img);
+            return $filename;
+        }
+        imagedestroy($canvas);
+        imagedestroy($bc_img);
+    } catch (Exception $e) {
+        return null;
+    }
+    return null;
+}
+
 // Ambil setting default
 $jatuh_tempo_hari = intval(get_setting($conn, 'jatuh_tempo_hari', 10));
 $poin_rajinnya = intval(get_setting($conn, 'poin_rajinnya', 10));
@@ -250,37 +375,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($has_ditambahkan_oleh) $creator_column = 'ditambahkan_oleh';
         elseif ($has_dibuat_oleh) $creator_column = 'dibuat_oleh';
         $creator_val = isset($_SESSION['id_user']) ? intval($_SESSION['id_user']) : null;
+        // detect barcode column
+        $has_barcode = false;
+        $colcheck3 = $conn->query("SHOW COLUMNS FROM pembayaran LIKE 'barcode'");
+        if ($colcheck3 && $colcheck3->num_rows > 0) {
+            $has_barcode = true;
+        }
+        $barcode_db = null;
+        if ($has_barcode) {
+            try {
+                $barcode_db = generate_unique_barcode($conn, $id_user);
+                if (!$barcode_db) {
+                    $err = 'Gagal menghasilkan barcode unik. Silakan coba lagi.';
+                }
+            } catch (Exception $e) {
+                $err = 'Gagal menghasilkan barcode: ' . $e->getMessage();
+            }
+        }
         if ($id_kategori_post) {
             if ($creator_column) {
-                $sql = "INSERT INTO pembayaran (id_user, id_kas, id_kategori, tanggal_bayar, status, jumlah, bukti, " . $creator_column . ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+                $sql = "INSERT INTO pembayaran (id_user, id_kas, id_kategori, tanggal_bayar, status, jumlah, bukti" . ($has_barcode ? ", barcode" : "") . ", " . $creator_column . ") VALUES (?, ?, ?, ?, ?, ?, ?" . ($has_barcode ? ", ?" : "") . ", ?)";
                 $stmt = $conn->prepare($sql);
             } else {
-                $sql = "INSERT INTO pembayaran (id_user, id_kas, id_kategori, tanggal_bayar, status, jumlah, bukti) VALUES (?, ?, ?, ?, ?, ?, ?)";
+                $sql = "INSERT INTO pembayaran (id_user, id_kas, id_kategori, tanggal_bayar, status, jumlah, bukti" . ($has_barcode ? ", barcode" : "") . ") VALUES (?, ?, ?, ?, ?, ?, ?" . ($has_barcode ? ", ?" : "") . ")";
                 $stmt = $conn->prepare($sql);
             }
         } else {
             if ($creator_column) {
-                $sql = "INSERT INTO pembayaran (id_user, id_kas, tanggal_bayar, status, jumlah, bukti, " . $creator_column . ") VALUES (?, ?, ?, ?, ?, ?, ?)";
+                $sql = "INSERT INTO pembayaran (id_user, id_kas, tanggal_bayar, status, jumlah, bukti" . ($has_barcode ? ", barcode" : "") . ", " . $creator_column . ") VALUES (?, ?, ?, ?, ?, ?" . ($has_barcode ? ", ?" : "") . ", ?)";
                 $stmt = $conn->prepare($sql);
             } else {
-                $sql = "INSERT INTO pembayaran (id_user, id_kas, tanggal_bayar, status, jumlah, bukti) VALUES (?, ?, ?, ?, ?, ?)";
+                $sql = "INSERT INTO pembayaran (id_user, id_kas, tanggal_bayar, status, jumlah, bukti" . ($has_barcode ? ", barcode" : "") . ") VALUES (?, ?, ?, ?, ?, ?" . ($has_barcode ? ", ?" : "") . ")";
                 $stmt = $conn->prepare($sql);
             }
         }
         // jika id_kas null, bind param null harus di-handle: gunakan ssi... but simpler: cast id_kas to null or int
         if ($id_kategori_post) {
             if ($creator_column) {
-                // params: i i i s s d s i
-                $stmt->bind_param("iiissdsi", $id_user, $id_kas, $id_kategori_post, $tanggal_bayar, $status, $jumlah, $bukti_db, $creator_val);
+                // params: i i i s s d s (barcode?) i
+                if ($has_barcode) {
+                    $stmt->bind_param("iiissdssi", $id_user, $id_kas, $id_kategori_post, $tanggal_bayar, $status, $jumlah, $bukti_db, $barcode_db, $creator_val);
+                } else {
+                    $stmt->bind_param("iiissdsi", $id_user, $id_kas, $id_kategori_post, $tanggal_bayar, $status, $jumlah, $bukti_db, $creator_val);
+                }
             } else {
-                // params: i i i s s d s
-                $stmt->bind_param("iiissds", $id_user, $id_kas, $id_kategori_post, $tanggal_bayar, $status, $jumlah, $bukti_db);
+                // params: i i i s s d s (barcode?)
+                if ($has_barcode) {
+                    $stmt->bind_param("iiissdss", $id_user, $id_kas, $id_kategori_post, $tanggal_bayar, $status, $jumlah, $bukti_db, $barcode_db);
+                } else {
+                    $stmt->bind_param("iiissds", $id_user, $id_kas, $id_kategori_post, $tanggal_bayar, $status, $jumlah, $bukti_db);
+                }
             }
         } else {
             if ($creator_column) {
-                $stmt->bind_param("iissdsi", $id_user, $id_kas, $tanggal_bayar, $status, $jumlah, $bukti_db, $creator_val);
+                if ($has_barcode) {
+                    $stmt->bind_param("iissdssi", $id_user, $id_kas, $tanggal_bayar, $status, $jumlah, $bukti_db, $barcode_db, $creator_val);
+                } else {
+                    $stmt->bind_param("iissdsi", $id_user, $id_kas, $tanggal_bayar, $status, $jumlah, $bukti_db, $creator_val);
+                }
             } else {
-                $stmt->bind_param("iissds", $id_user, $id_kas, $tanggal_bayar, $status, $jumlah, $bukti_db);
+                if ($has_barcode) {
+                    $stmt->bind_param("iissdss", $id_user, $id_kas, $tanggal_bayar, $status, $jumlah, $bukti_db, $barcode_db);
+                } else {
+                    $stmt->bind_param("iissds", $id_user, $id_kas, $tanggal_bayar, $status, $jumlah, $bukti_db);
+                }
             }
         }
 
@@ -291,6 +449,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // make sure to surface an error message to the user
             // $err already set above
         } elseif ($stmt->execute()) {
+            // after insert, try to save barcode PNG if barcode was generated
+            $new_id = $conn->insert_id;
+            if (!empty($barcode_db)) {
+                $saved = save_barcode_png($barcode_db, __DIR__ . '/../upload/pembayaran/barcodes');
+                if ($saved) {
+                    // if pembayaran has barcode_image column, update it
+                    $colcheck4 = $conn->query("SHOW COLUMNS FROM pembayaran LIKE 'barcode_image'");
+                    if ($colcheck4 && $colcheck4->num_rows > 0) {
+                        $u = $conn->prepare("UPDATE pembayaran SET barcode_image = ? WHERE id_pembayaran = ?");
+                        if ($u) {
+                            $u->bind_param('si', $saved, $new_id);
+                            $u->execute();
+                            $u->close();
+                        }
+                    }
+                }
+            }
             // update ranking
             if ($status === 'lunas') {
                 adjust_ranking($conn, $id_user, 1, 0, $poin_rajinnya);
@@ -519,7 +694,7 @@ if ($colDita) {
     $creator_join = " LEFT JOIN user u_cre ON p." . $colDita . " = u_cre.id_user";
     $creator_select = "COALESCE(u_cre.username, CAST(p." . $colDita . " AS CHAR)) AS ditambahkan_oleh_display";
 }
-$sql = "SELECT p.id_pembayaran, p.id_user, u.nama_lengkap, p.id_kas, p.id_kategori, kk.nama AS kategori_nama, k.keterangan AS kas_ket, COALESCE(p.jumlah, k.jumlah) AS jumlah, p.tanggal_bayar, p.status, p.bukti, " . $creator_select . " 
+$sql = "SELECT p.id_pembayaran, p.id_user, u.nama_lengkap, p.id_kas, p.id_kategori, kk.nama AS kategori_nama, k.keterangan AS kas_ket, COALESCE(p.jumlah, k.jumlah) AS jumlah, p.tanggal_bayar, p.status, p.bukti, p.barcode, p.barcode_image, " . $creator_select . " 
         FROM pembayaran p
         LEFT JOIN user u ON p.id_user = u.id_user
         LEFT JOIN kas k ON p.id_kas = k.id_kas
@@ -708,6 +883,7 @@ $result = $stmt->get_result();
                                                 </form>
                                                 <div>
                                                     <a href="pembayaran.php" class="btn btn-sm btn-secondary">Refresh</a>
+                                                    <button id="btnScanBarcode" class="btn btn-info btn-sm me-1">Scan / Lookup Barcode</button>
                                                     <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalAdd">Tambah Pembayaran</button>
                                                 </div>
                                             </div>
@@ -725,6 +901,7 @@ $result = $stmt->get_result();
                                                         <th>Status</th>
                                                         <th>Operator</th>
                                                         <th>Bukti</th>
+                                                        <th>Bukti Barcode</th>
                                                         <th>Aksi</th>
                                                     </tr>
                                                 </thead>
@@ -737,6 +914,7 @@ $result = $stmt->get_result();
                                                         <th>Status</th>
                                                         <th>Operator</th>
                                                         <th>Bukti</th>
+                                                        <th>Bukti Barcode</th>
                                                         <th>Aksi</th>
                                                     </tr>
                                                 </tfoot>
@@ -761,6 +939,17 @@ $result = $stmt->get_result();
                                                             <td>
                                                                 <?php if ($row['bukti']): ?>
                                                                     <a href="../upload/pembayaran/<?= urlencode($row['bukti']) ?>" target="_blank">Lihat</a>
+                                                                <?php else: ?>
+                                                                    -
+                                                                <?php endif; ?>
+                                                            </td>
+                                                            <td>
+                                                                <?php if (!empty($row['barcode_image'])): ?>
+                                                                    <a href="../upload/pembayaran/barcodes/<?= urlencode($row['barcode_image']) ?>" target="_blank" download>Download</a>
+                                                                    &nbsp;<img src="../upload/pembayaran/barcodes/<?= urlencode($row['barcode_image']) ?>" style="height:28px; vertical-align:middle;" alt="barcode">
+                                                                <?php elseif (!empty($row['barcode'])): ?>
+                                                                    <a href="barcode_image.php?code=<?= urlencode($row['barcode']) ?>" target="_blank">Lihat</a>
+                                                                    &nbsp;<img src="barcode_image.php?code=<?= urlencode($row['barcode']) ?>&size=thumb" style="height:28px; vertical-align:middle;" alt="barcode">
                                                                 <?php else: ?>
                                                                     -
                                                                 <?php endif; ?>
@@ -827,6 +1016,7 @@ $result = $stmt->get_result();
                                     <label>Bukti (unggah jika ingin mengganti)</label>
                                     <input type="file" name="bukti" class="form-control">
                                     <div id="edit_current_bukti"></div>
+                                    <div id="edit_current_barcode" class="mt-2"></div>
                                 </div>
                             </div>
                             <div class="modal-footer">
@@ -834,6 +1024,49 @@ $result = $stmt->get_result();
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Lookup Barcode -->
+            <div class="modal fade" id="modalLookupBarcode" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Lookup Barcode</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label>Kode Barcode</label>
+                                <div class="input-group">
+                                    <input type="text" id="lookup_code" class="form-control" placeholder="Masukkan atau scan kode barcode" />
+                                    <button id="lookup_paste" class="btn btn-secondary" type="button" title="Paste dari clipboard">Paste</button>
+                                    <button id="lookup_go" class="btn btn-primary" type="button">Cari</button>
+                                </div>
+                            </div>
+                            <div id="lookup_result" style="display:none;">
+                                <hr />
+                                <dl class="row">
+                                    <dt class="col-5">Nama</dt>
+                                    <dd class="col-7" id="lr_nama"></dd>
+                                    <dt class="col-5">Jumlah</dt>
+                                    <dd class="col-7" id="lr_jumlah"></dd>
+                                    <dt class="col-5">Tanggal Bayar</dt>
+                                    <dd class="col-7" id="lr_tanggal"></dd>
+                                    <dt class="col-5">Status</dt>
+                                    <dd class="col-7" id="lr_status"></dd>
+                                    <dt class="col-5">Operator</dt>
+                                    <dd class="col-7" id="lr_operator"></dd>
+                                    <dt class="col-5">Tagihan</dt>
+                                    <dd class="col-7" id="lr_ket"></dd>
+                                </dl>
+                            </div>
+                            <div id="lookup_error" class="alert alert-danger" style="display:none;"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -859,25 +1092,25 @@ $result = $stmt->get_result();
                                     </select>
                                 </div>
 
-                                                                 <div class="mb-3">
-                                                                    <label>Kategori Pembayaran (opsional)</label>
-                                                                    <select name="id_kategori" class="form-select">
-                                                                        <option value="">--Pilih kategori--</option>
-                                                                        <?php foreach ($kategori_list as $kat): ?>
-                                                                            <option value="<?= $kat['id_kategori'] ?>"><?= htmlspecialchars($kat['nama']) ?></option>
-                                                                        <?php endforeach; ?>
-                                                                    </select>
-                                                                </div>
-                                
-                                                                <div class="mb-3">
-                                                                    <label>Pilih Tagihan (opsional)</label>
-                                                                    <select name="id_kas" class="form-select">
-                                                                        <option value="">--Pilih Tagihan--</option>
-                                                                        <?php foreach ($kas_list as $kas_item): ?>
-                                                                            <option value="<?= $kas_item['id_kas'] ?>"><?= htmlspecialchars($kas_item['keterangan']) ?> (<?= date('d M Y', strtotime($kas_item['tanggal'])) ?>)</option>
-                                                                        <?php endforeach; ?>
-                                                                    </select>
-                                                                </div>
+                                <div class="mb-3">
+                                    <label>Kategori Pembayaran (opsional)</label>
+                                    <select name="id_kategori" class="form-select">
+                                        <option value="">--Pilih kategori--</option>
+                                        <?php foreach ($kategori_list as $kat): ?>
+                                            <option value="<?= $kat['id_kategori'] ?>"><?= htmlspecialchars($kat['nama']) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label>Pilih Tagihan (opsional)</label>
+                                    <select name="id_kas" class="form-select">
+                                        <option value="">--Pilih Tagihan--</option>
+                                        <?php foreach ($kas_list as $kas_item): ?>
+                                            <option value="<?= $kas_item['id_kas'] ?>"><?= htmlspecialchars($kas_item['keterangan']) ?> (<?= date('d M Y', strtotime($kas_item['tanggal'])) ?>)</option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
                                 <div class="mb-3">
                                     <label>Tanggal Bayar</label>
                                     <div class="d-flex gap-2">
@@ -1017,6 +1250,16 @@ $result = $stmt->get_result();
                         } else {
                             currentBuktiDiv.innerHTML = '';
                         }
+                        // Handle current barcode display and saved image
+                        var currentBarcodeDiv = document.getElementById('edit_current_barcode');
+                        if (paymentData.barcode_image) {
+                            currentBarcodeDiv.innerHTML = '<small>Barcode (file): <a href="../upload/pembayaran/barcodes/' + encodeURIComponent(paymentData.barcode_image) + '" target="_blank" download>Download</a> <img src="../upload/pembayaran/barcodes/' + encodeURIComponent(paymentData.barcode_image) + '" style="height:28px; vertical-align:middle; margin-left:6px;"></small>';
+                        } else if (paymentData.barcode) {
+                            var codeEsc = encodeURIComponent(paymentData.barcode);
+                            currentBarcodeDiv.innerHTML = '<small>Barcode: <a href="barcode_image.php?code=' + codeEsc + '" target="_blank">Lihat</a> <img src="barcode_image.php?code=' + codeEsc + '&size=thumb" style="height:28px; vertical-align:middle; margin-left:6px;"></small>';
+                        } else {
+                            currentBarcodeDiv.innerHTML = '';
+                        }
 
                         // Show the modal
                         editModal.show();
@@ -1052,6 +1295,129 @@ $result = $stmt->get_result();
                 });
             });
         });
+    </script>
+    <script>
+        // Barcode lookup / scan UI
+        (function() {
+            var lookupModalEl = document.getElementById('modalLookupBarcode');
+            var lookupModal = new bootstrap.Modal(lookupModalEl);
+            var inputEl = document.getElementById('lookup_code');
+            var goBtn = document.getElementById('lookup_go');
+            var pasteBtn = document.getElementById('lookup_paste');
+
+            document.getElementById('btnScanBarcode').addEventListener('click', function() {
+                lookupModal.show();
+                inputEl.value = '';
+                inputEl.focus();
+                // hide previous results
+                document.getElementById('lookup_result').style.display = 'none';
+                document.getElementById('lookup_error').style.display = 'none';
+            });
+
+            goBtn.addEventListener('click', doLookup);
+            // Paste-from-clipboard button (user gesture required). Useful when scanner copies to clipboard.
+            if (pasteBtn) {
+                pasteBtn.addEventListener('click', function() {
+                    if (!navigator.clipboard || !navigator.clipboard.readText) {
+                        return showError('Clipboard API tidak tersedia. Pastikan menggunakan browser modern pada localhost/https.');
+                    }
+                    navigator.clipboard.readText().then(function(text) {
+                        if (!text) return showError('Clipboard kosong. Scan dulu barcode di aplikasi scanner.');
+                        inputEl.value = text.trim();
+                        // immediately attempt lookup if pattern matches
+                        handleAutoDetect();
+                        // also trigger lookup explicitly
+                        doLookup();
+                    }).catch(function(err) {
+                        showError('Tidak dapat membaca clipboard: ' + (err && err.message ? err.message : err));
+                    });
+                });
+            }
+
+            // Enter key will trigger lookup
+            inputEl.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    doLookup();
+                }
+            });
+
+            // Many mobile barcode scanner apps paste the scanned value into the focused input
+            // without sending an Enter key. Listen for paste and input events and auto-lookup
+            // when the pasted value matches the expected barcode pattern.
+            var pasteTimer = null;
+            inputEl.addEventListener('paste', function() {
+                // give the paste event time to place the value into the input
+                setTimeout(function() {
+                    handleAutoDetect();
+                }, 150);
+            });
+            // also watch input changes (some scanners/soft keyboards update value via input)
+            inputEl.addEventListener('input', function() {
+                handleAutoDetect();
+            });
+
+            function handleAutoDetect() {
+                var code = inputEl.value.trim();
+                if (!code) return;
+                // barcode format we generate: PAY-{digits}-{6hex}
+                var re = /^PAY-\d+-[0-9a-fA-F]{6}$/;
+                if (re.test(code)) {
+                    // debounce rapid input changes
+                    if (pasteTimer) clearTimeout(pasteTimer);
+                    pasteTimer = setTimeout(function() {
+                        doLookup();
+                    }, 250);
+                }
+            }
+
+            function doLookup() {
+                var code = inputEl.value.trim();
+                if (!code) return showError('Masukkan kode barcode terlebih dahulu.');
+                var url = 'api_barcode_lookup.php?code=' + encodeURIComponent(code);
+                // clear previous
+                document.getElementById('lookup_result').style.display = 'none';
+                document.getElementById('lookup_error').style.display = 'none';
+
+                fetch(url, {
+                        credentials: 'same-origin'
+                    })
+                    .then(function(res) {
+                        if (!res.ok) throw res;
+                        return res.json();
+                    })
+                    .then(function(json) {
+                        if (json.ok && json.payment) {
+                            var p = json.payment;
+                            document.getElementById('lr_nama').textContent = p.nama_lengkap || '-';
+                            document.getElementById('lr_jumlah').textContent = (p.jumlah !== null ? new Intl.NumberFormat().format(p.jumlah) : '-');
+                            document.getElementById('lr_tanggal').textContent = p.tanggal_bayar || '-';
+                            document.getElementById('lr_status').textContent = p.status || '-';
+                            // operator field: prefer ditambahkan_oleh_display or fallback to created user id
+                            document.getElementById('lr_operator').textContent = p.ditambahkan_oleh_display || p.dibuat_oleh || '-';
+                            document.getElementById('lr_ket').textContent = p.keterangan || '-';
+                            document.getElementById('lookup_result').style.display = '';
+                        } else {
+                            showError('Data tidak ditemukan.');
+                        }
+                    })
+                    .catch(function(err) {
+                        if (err instanceof Response) {
+                            err.text().then(function(t) {
+                                showError('Gagal: ' + (t || err.statusText || err.status));
+                            });
+                        } else {
+                            showError('Terjadi kesalahan saat mencari barcode.');
+                        }
+                    });
+            }
+
+            function showError(msg) {
+                var el = document.getElementById('lookup_error');
+                el.textContent = msg;
+                el.style.display = '';
+            }
+        })();
     </script>
     <script>
         // filter kas options by selected kategori

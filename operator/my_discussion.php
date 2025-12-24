@@ -83,7 +83,8 @@ if ($result_categories) {
     <!-- Custom CSS for Chat -->
     <style>
         .chat-container {
-            height: 60vh; /* Adjust as needed */
+            height: 60vh;
+            /* Adjust as needed */
             overflow-y: auto;
             border: 1px solid #e3e3e3;
             padding: 15px;
@@ -91,6 +92,7 @@ if ($result_categories) {
             display: flex;
             flex-direction: column;
         }
+
         .chat-message {
             margin-bottom: 10px;
             padding: 8px 12px;
@@ -98,28 +100,33 @@ if ($result_categories) {
             max-width: 70%;
             word-wrap: break-word;
         }
+
         .chat-message.mine {
             align-self: flex-end;
             background-color: #007bff;
             color: white;
             border-bottom-right-radius: 2px;
         }
+
         .chat-message.other {
             align-self: flex-start;
             background-color: #e9ecef;
             color: #333;
             border-bottom-left-radius: 2px;
         }
+
         .chat-message .sender-name {
             font-weight: bold;
             margin-bottom: 2px;
         }
+
         .chat-message .timestamp {
             font-size: 0.75em;
             color: #6c757d;
             text-align: right;
             margin-top: 5px;
         }
+
         .chat-message.mine .timestamp {
             color: rgba(255, 255, 255, 0.7);
         }
@@ -294,7 +301,9 @@ if ($result_categories) {
             $.ajax({
                 url: 'api_chat.php', // We will create this API endpoint
                 method: 'GET',
-                data: { topic_id: topicId },
+                data: {
+                    topic_id: topicId
+                },
                 success: function(response) {
                     // jQuery automatically parses JSON if Content-Type is application/json
                     const messages = response.messages; // Correctly access the messages array
@@ -364,7 +373,7 @@ if ($result_categories) {
 
         // JavaScript for Edit Chat Message Modal
         var editChatMessageModal = document.getElementById('editChatMessageModal');
-        editChatMessageModal.addEventListener('show.bs.modal', function (event) {
+        editChatMessageModal.addEventListener('show.bs.modal', function(event) {
             var button = event.relatedTarget; // Button that triggered the modal
             var messageId = button.getAttribute('data-id');
             var messageContent = button.getAttribute('data-message');
@@ -401,7 +410,10 @@ if ($result_categories) {
                     $.ajax({
                         url: 'action_delete_chat_message.php',
                         method: 'GET', // Or POST, but GET is fine for simple deletion with ID
-                        data: { id: id, topic_id: topicId },
+                        data: {
+                            id: id,
+                            topic_id: topicId
+                        },
                         success: function(response) {
                             const result = response; // jQuery already parses JSON
                             if (result.status === 'success') {

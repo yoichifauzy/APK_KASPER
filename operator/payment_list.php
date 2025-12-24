@@ -270,6 +270,11 @@ $result = $stmt->get_result();
 
     <script>
         $(document).ready(function() {
+            // Remove the global settings panel on this page (prevents unwanted "Navbar Header" element)
+            try {
+                $('#customTemplate').remove();
+            } catch (e) {
+                /* ignore if not present */ }
             $('#paymentTable').DataTable({
                 pageLength: 10,
                 responsive: true

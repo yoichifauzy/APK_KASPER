@@ -4,35 +4,200 @@
             class="d-flex align-items-left align-items-md-center flex-column flex-md-row pt-2 pb-4">
             <div>
                 <h3 class="fw-bold mb-3">Dashboard</h3>
-                <h6 class="op-7 mb-2">Free Bootstrap 5 Admin Dashboard</h6>
+                <h6 class="op-7 mb-2">Ringkasan Informasi Keuangan dan Aktivitas</h6>
             </div>
-            <div class="ms-md-auto py-2 py-md-0">
-                <a href="#" class="btn btn-label-info btn-round me-2">Manage</a>
-                <a href="#" class="btn btn-primary btn-round">Add Customer</a>
-            </div>
+
         </div>
+
+        <?php include __DIR__ . '/../grafik_arus_kas.php'; ?>
+
+
+        <?php
+        // --- QUERIES FOR KPI CARDS ---
+
+
+        // 1. Total Aset Kas (Overall)
+        $query_total_income = "SELECT SUM(jumlah) AS total FROM pembayaran";
+        $result_total_income = mysqli_query($conn, $query_total_income);
+        $total_income = mysqli_fetch_assoc($result_total_income)['total'] ?? 0;
+
+        $query_total_expense = "SELECT SUM(jumlah) AS total FROM kas WHERE jenis = 'pengeluaran'";
+        $result_total_expense = mysqli_query($conn, $query_total_expense);
+        $total_expense = mysqli_fetch_assoc($result_total_expense)['total'] ?? 0;
+
+        $total_aset_kas = $total_income - $total_expense;
+
+        // 2. Pemasukan (Bulan Ini)
+        $bulan_ini = date('Y-m');
+        $query_monthly_income = "SELECT SUM(jumlah) AS total FROM pembayaran WHERE DATE_FORMAT(tanggal_bayar, '%Y-%m') = '$bulan_ini'";
+        $result_monthly_income = mysqli_query($conn, $query_monthly_income);
+        $pemasukan_bulan_ini = mysqli_fetch_assoc($result_monthly_income)['total'] ?? 0;
+
+        // 3. Pengeluaran (Bulan Ini)
+        $query_monthly_expense = "SELECT SUM(jumlah) AS total FROM kas WHERE jenis = 'pengeluaran' AND DATE_FORMAT(tanggal, '%Y-%m') = '$bulan_ini'";
+        $result_monthly_expense = mysqli_query($conn, $query_monthly_expense);
+        $pengeluaran_bulan_ini = mysqli_fetch_assoc($result_monthly_expense)['total'] ?? 0;
+
+        // --- LOGIC FOR "SUDAH LUNAS" CARD AND MODAL ---
+        $modal_month = $_GET['modal_month'] ?? date('m');
+        $modal_year = $_GET['modal_year'] ?? date('Y');
+
+        $students = [];
+        $res_students = $conn->query("SELECT id_user, nama_lengkap FROM user WHERE role = 'user' AND status='aktif' ORDER BY nama_lengkap");
+        while ($row = $res_students->fetch_assoc()) {
+            $students[] = $row;
+        }
+
+        // Get the main bill for the filtered month (for the modal)
+        $main_bill_modal = null;
+        $stmt_bill_modal = $conn->prepare("SELECT id_kas, keterangan, jumlah FROM kas WHERE jenis = 'pemasukan' AND MONTH(tanggal) = ? AND YEAR(tanggal) = ? ORDER BY id_kas ASC LIMIT 1");
+        $stmt_bill_modal->bind_param("ii", $modal_month, $modal_year);
+        $stmt_bill_modal->execute();
+        $result_bill_modal = $stmt_bill_modal->get_result();
+        if ($result_bill_modal->num_rows > 0) {
+            $main_bill_modal = $result_bill_modal->fetch_assoc();
+        }
+        $stmt_bill_modal->close();
+
+        $paid_users_for_modal = [];
+        if ($main_bill_modal) {
+            // --- LOGIKA JIKA ADA TAGIHAN UTAMA ---
+            foreach ($students as $student) {
+                $id_user = $student['id_user'];
+                $required_amount = $main_bill_modal['jumlah'];
+
+                $total_paid = 0;
+                $stmt_paid_modal = $conn->prepare("SELECT SUM(jumlah) FROM pembayaran WHERE id_user = ? AND id_kas = ?");
+                $stmt_paid_modal->bind_param("ii", $id_user, $main_bill_modal['id_kas']);
+                $stmt_paid_modal->execute();
+                $stmt_paid_modal->bind_result($sum_paid);
+                if ($stmt_paid_modal->fetch()) {
+                    $total_paid = $sum_paid ?? 0;
+                }
+                $stmt_paid_modal->close();
+
+                if ($total_paid >= $required_amount) {
+                    $paid_users_for_modal[] = ['nama_lengkap' => $student['nama_lengkap']];
+                }
+            }
+        } else {
+            // --- LOGIKA JIKA TIDAK ADA TAGIHAN UTAMA ---
+            // Cek pembayaran apa pun yang dilakukan mahasiswa di bulan ini
+            foreach ($students as $student) {
+                $id_user = $student['id_user'];
+                $total_paid = 0;
+                $is_late_payment_found = false;
+
+                $stmt_payments_modal = $conn->prepare("SELECT jumlah, status FROM pembayaran WHERE id_user = ? AND MONTH(tanggal_bayar) = ? AND YEAR(tanggal_bayar) = ?");
+                $stmt_payments_modal->bind_param("iii", $id_user, $modal_month, $modal_year);
+                $stmt_payments_modal->execute();
+                $result_payments_modal = $stmt_payments_modal->get_result();
+
+                while ($row = $result_payments_modal->fetch_assoc()) {
+                    $total_paid += $row['jumlah'];
+                    if ($row['status'] === 'telat') {
+                        $is_late_payment_found = true;
+                    }
+                }
+                $stmt_payments_modal->close();
+
+                // Jika ada pembayaran di bulan ini, anggap sebagai "lunas"
+                if ($total_paid > 0) {
+                    $paid_users_for_modal[] = ['nama_lengkap' => $student['nama_lengkap']];
+                }
+            }
+        }
+
+        // Calculate paid count for the FILTERED month for the KPI card
+        // Use modal_month and modal_year so card shows filtered data
+        $paid_count_for_kpi = 0;
+        $kpi_month = $modal_month;
+        $kpi_year = $modal_year;
+        $main_bill_kpi = null;
+        $stmt_bill_kpi = $conn->prepare("SELECT id_kas, jumlah FROM kas WHERE jenis = 'pemasukan' AND MONTH(tanggal) = ? AND YEAR(tanggal) = ? ORDER BY id_kas ASC LIMIT 1");
+        $stmt_bill_kpi->bind_param("ii", $kpi_month, $kpi_year);
+        $stmt_bill_kpi->execute();
+        $result_bill_kpi = $stmt_bill_kpi->get_result();
+        if ($result_bill_kpi->num_rows > 0) {
+            // --- LOGIKA JIKA ADA TAGIHAN UTAMA ---
+            $main_bill_kpi = $result_bill_kpi->fetch_assoc();
+            foreach ($students as $student) {
+                $total_paid_kpi = 0;
+                $stmt_paid_kpi = $conn->prepare("SELECT SUM(jumlah) FROM pembayaran WHERE id_user = ? AND id_kas = ?");
+                $stmt_paid_kpi->bind_param("ii", $student['id_user'], $main_bill_kpi['id_kas']);
+                $stmt_paid_kpi->execute();
+                $stmt_paid_kpi->bind_result($sum_paid_kpi);
+                if ($stmt_paid_kpi->fetch()) {
+                    $total_paid_kpi = $sum_paid_kpi ?? 0;
+                }
+                $stmt_paid_kpi->close();
+                if ($total_paid_kpi >= $main_bill_kpi['jumlah']) {
+                    $paid_count_for_kpi++;
+                }
+            }
+        } else {
+            // --- LOGIKA JIKA TIDAK ADA TAGIHAN UTAMA ---
+            // Cek pembayaran apa pun yang dilakukan mahasiswa di bulan ini
+            foreach ($students as $student) {
+                $total_paid_kpi = 0;
+                $stmt_payments_kpi = $conn->prepare("SELECT SUM(jumlah) FROM pembayaran WHERE id_user = ? AND MONTH(tanggal_bayar) = ? AND YEAR(tanggal_bayar) = ?");
+                $stmt_payments_kpi->bind_param("iii", $student['id_user'], $kpi_month, $kpi_year);
+                $stmt_payments_kpi->execute();
+                $stmt_payments_kpi->bind_result($sum_paid_kpi);
+                if ($stmt_payments_kpi->fetch()) {
+                    $total_paid_kpi = $sum_paid_kpi ?? 0;
+                }
+                $stmt_payments_kpi->close();
+
+                // Jika ada pembayaran di bulan ini, anggap sebagai "lunas"
+                if ($total_paid_kpi > 0) {
+                    $paid_count_for_kpi++;
+                }
+            }
+        }
+        $stmt_bill_kpi->close();
+
+        if (!function_exists('formatRupiah')) {
+            function formatRupiah($amount)
+            {
+                return 'Rp ' . number_format($amount, 0, ',', '.');
+            }
+        }
+        ?>
+        <!-- Filter Section for Anggota Lunas Card -->
+        <form method="GET" action="<?= htmlspecialchars($dashboard_action ?? 'dashboard_operator.php') ?>" class="mb-3">
+            <div class="row align-items-center">
+                <div class="col-md-8"></div>
+                <div class="col-md-4">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="mb-0" style="white-space: nowrap;">Filter Lunas:</label>
+                        <select name="modal_month" class="form-select form-select-sm">
+                            <?php for ($m = 1; $m <= 12; $m++): ?>
+                                <option value="<?= $m ?>" <?= ($modal_month == $m) ? 'selected' : '' ?>><?= date('F', mktime(0, 0, 0, $m, 10)) ?></option>
+                            <?php endfor; ?>
+                        </select>
+                        <select name="modal_year" class="form-select form-select-sm">
+                            <?php for ($y = date('Y') - 2; $y <= date('Y') + 1; $y++): ?>
+                                <option value="<?= $y ?>" <?= ($modal_year == $y) ? 'selected' : '' ?>><?= $y ?></option>
+                            <?php endfor; ?>
+                        </select>
+                        <button type="submit" class="btn btn-primary btn-sm">Terapkan</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+
         <div class="row row-card-no-pd">
+            <!-- Card 1-3 -->
             <div class="col-12 col-sm-6 col-md-6 col-xl-3">
                 <div class="card">
                     <div class="card-body">
                         <div class="d-flex justify-content-between">
                             <div>
-                                <h6><b>Todays Income</b></h6>
-                                <p class="text-muted">All Customs Value</p>
+                                <h6 class="fw-bold text-uppercase">Total Aset Kas</h6>
+                                <p class="text-muted">Saldo Akhir Keseluruhan</p>
                             </div>
-                            <h4 class="text-info fw-bold">$170</h4>
-                        </div>
-                        <div class="progress progress-sm">
-                            <div
-                                class="progress-bar bg-info w-75"
-                                role="progressbar"
-                                aria-valuenow="75"
-                                aria-valuemin="0"
-                                aria-valuemax="100"></div>
-                        </div>
-                        <div class="d-flex justify-content-between mt-2">
-                            <p class="text-muted mb-0">Change</p>
-                            <p class="text-muted mb-0">75%</p>
+                            <h4 class="text-primary fw-bold"><?php echo formatRupiah($total_aset_kas); ?></h4>
                         </div>
                     </div>
                 </div>
@@ -42,22 +207,10 @@
                     <div class="card-body">
                         <div class="d-flex justify-content-between">
                             <div>
-                                <h6><b>Total Revenue</b></h6>
-                                <p class="text-muted">All Customs Value</p>
+                                <h6 class="fw-bold text-uppercase">Pemasukan (Bulan Ini)</h6>
+                                <p class="text-muted">Periode <?= date('F Y') ?></p>
                             </div>
-                            <h4 class="text-success fw-bold">$120</h4>
-                        </div>
-                        <div class="progress progress-sm">
-                            <div
-                                class="progress-bar bg-success w-25"
-                                role="progressbar"
-                                aria-valuenow="25"
-                                aria-valuemin="0"
-                                aria-valuemax="100"></div>
-                        </div>
-                        <div class="d-flex justify-content-between mt-2">
-                            <p class="text-muted mb-0">Change</p>
-                            <p class="text-muted mb-0">25%</p>
+                            <h4 class="text-success fw-bold"><?php echo formatRupiah($pemasukan_bulan_ini); ?></h4>
                         </div>
                     </div>
                 </div>
@@ -67,783 +220,897 @@
                     <div class="card-body">
                         <div class="d-flex justify-content-between">
                             <div>
-                                <h6><b>New Orders</b></h6>
-                                <p class="text-muted">Fresh Order Amount</p>
+                                <h6 class="fw-bold text-uppercase">Pengeluaran (Bulan Ini)</h6>
+                                <p class="text-muted">Periode <?= date('F Y') ?></p>
                             </div>
-                            <h4 class="text-danger fw-bold">15</h4>
-                        </div>
-                        <div class="progress progress-sm">
-                            <div
-                                class="progress-bar bg-danger w-50"
-                                role="progressbar"
-                                aria-valuenow="50"
-                                aria-valuemin="0"
-                                aria-valuemax="100"></div>
-                        </div>
-                        <div class="d-flex justify-content-between mt-2">
-                            <p class="text-muted mb-0">Change</p>
-                            <p class="text-muted mb-0">50%</p>
+                            <h4 class="text-danger fw-bold"><?php echo formatRupiah($pengeluaran_bulan_ini); ?></h4>
                         </div>
                     </div>
                 </div>
             </div>
+            <!-- Card 4: Anggota Sudah Lunas -->
             <div class="col-12 col-sm-6 col-md-6 col-xl-3">
                 <div class="card">
                     <div class="card-body">
-                        <div class="d-flex justify-content-between">
+                        <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <h6><b>New Users</b></h6>
-                                <p class="text-muted">Joined New User</p>
-                            </div>
-                            <h4 class="text-secondary fw-bold">12</h4>
-                        </div>
-                        <div class="progress progress-sm">
-                            <div
-                                class="progress-bar bg-secondary w-25"
-                                role="progressbar"
-                                aria-valuenow="25"
-                                aria-valuemin="0"
-                                aria-valuemax="100"></div>
-                        </div>
-                        <div class="d-flex justify-content-between mt-2">
-                            <p class="text-muted mb-0">Change</p>
-                            <p class="text-muted mb-0">25%</p>
+                                <h6 class="fw-bold text-uppercase">Anggota Lunas</h6>
+                                <p class="text-muted"><?= date('F Y', mktime(0, 0, 0, $modal_month, 1, $modal_year)) ?></p>
+                                <h4 class="text-success fw-bold mb-0"><?php echo $paid_count_for_kpi; ?> Orang</h4>
+                            </div><button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#paid-modal"><i class="fas fa-eye"></i> Lihat</button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="row">
-            <div class="col-md-8">
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-head-row">
-                            <div class="card-title">User Statistics</div>
-                            <div class="card-tools">
-                                <a
-                                    href="#"
-                                    class="btn btn-label-success btn-round btn-sm me-2">
-                                    <span class="btn-label">
-                                        <i class="fa fa-pencil"></i>
-                                    </span>
-                                    Export
-                                </a>
-                                <a href="#" class="btn btn-label-info btn-round btn-sm">
-                                    <span class="btn-label">
-                                        <i class="fa fa-print"></i>
-                                    </span>
-                                    Print
-                                </a>
-                            </div>
-                        </div>
+
+        <!-- Modal for Paid Users -->
+        <div class="modal fade" id="paid-modal" tabindex="-1" aria-labelledby="paidModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="paidModalLabel">Daftar Anggota Sudah Lunas</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
-                    <div class="card-body">
-                        <div class="chart-container" style="min-height: 375px">
-                            <canvas id="statisticsChart"></canvas>
-                        </div>
-                        <div id="myChartLegend"></div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card card-primary">
-                    <div class="card-header">
-                        <div class="card-head-row">
-                            <div class="card-title">Daily Sales</div>
-                            <div class="card-tools">
-                                <div class="dropdown">
-                                    <button
-                                        class="btn btn-sm btn-label-light dropdown-toggle"
-                                        type="button"
-                                        id="dropdownMenuButton"
-                                        data-bs-toggle="dropdown"
-                                        aria-haspopup="true"
-                                        aria-expanded="false">
-                                        Export
-                                    </button>
-                                    <div
-                                        class="dropdown-menu"
-                                        aria-labelledby="dropdownMenuButton">
-                                        <a class="dropdown-item" href="#">Action</a>
-                                        <a class="dropdown-item" href="#">Another action</a>
-                                        <a class="dropdown-item" href="#">Something else here</a>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="card-category">March 25 - April 02</div>
-                    </div>
-                    <div class="card-body pb-0">
-                        <div class="mb-4 mt-2">
-                            <h1>$4,578.58</h1>
-                        </div>
-                        <div class="pull-in">
-                            <canvas id="dailySalesChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-body pb-0">
-                        <div class="h1 fw-bold float-end text-primary">+5%</div>
-                        <h2 class="mb-2">17</h2>
-                        <p class="text-muted">Users online</p>
-                        <div class="pull-in sparkline-fix">
-                            <div id="lineChart"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-body pb-0">
-                        <div class="h1 fw-bold float-end text-primary">+5%</div>
-                        <h2 class="mb-2">17</h2>
-                        <p class="text-muted">Users online</p>
-                        <div class="pull-in sparkline-fix">
-                            <div id="lineChart"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-body pb-0">
-                        <div class="h1 fw-bold float-end text-danger">-3%</div>
-                        <h2 class="mb-2">27</h2>
-                        <p class="text-muted">New Users</p>
-                        <div class="pull-in sparkline-fix">
-                            <div id="lineChart2"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-body pb-0">
-                        <div class="h1 fw-bold float-end text-warning">+7%</div>
-                        <h2 class="mb-2">213</h2>
-                        <p class="text-muted">Transactions</p>
-                        <div class="pull-in sparkline-fix">
-                            <div id="lineChart3"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-title">Top Products</div>
-                    </div>
-                    <div class="card-body pb-0">
-                        <div class="d-flex">
-                            <div class="avatar">
-                                <img src="../assets/img/logoproduct.svg" alt="..." class="avatar-img rounded-circle">
-                            </div>
-                            <div class="flex-1 pt-1 ms-2">
-                                <h6 class="fw-bold mb-1">CSS</h6>
-                                <small class="text-muted">Cascading Style Sheets</small>
-                            </div>
-                            <div class="d-flex ms-auto align-items-center">
-                                <h4 class="text-info fw-bold">+$17</h4>
-                            </div>
-                        </div>
-                        <div class="separator-dashed"></div>
-                        <div class="d-flex">
-                            <div class="avatar">
-                                <img src="../assets/img/logoproduct.svg" alt="..." class="avatar-img rounded-circle">
-                            </div>
-                            <div class="flex-1 pt-1 ms-2">
-                                <h6 class="fw-bold mb-1">J.CO Donuts</h6>
-                                <small class="text-muted">The Best Donuts</small>
-                            </div>
-                            <div class="d-flex ms-auto align-items-center">
-                                <h4 class="text-info fw-bold">+$300</h4>
-                            </div>
-                        </div>
-                        <div class="separator-dashed"></div>
-                        <div class="d-flex">
-                            <div class="avatar">
-                                <img src="../assets/img/logoproduct3.svg" alt="..." class="avatar-img rounded-circle">
-                            </div>
-                            <div class="flex-1 pt-1 ms-2">
-                                <h6 class="fw-bold mb-1">Ready Pro</h6>
-                                <small class="text-muted">Bootstrap 5 Admin Dashboard</small>
-                            </div>
-                            <div class="d-flex ms-auto align-items-center">
-                                <h4 class="text-info fw-bold">+$350</h4>
-                            </div>
-                        </div>
-                        <div class="separator-dashed"></div>
-                        <div class="pull-in">
-                            <canvas id="topProductsChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-body">
-                        <div class="card-title fw-mediumbold">Suggested People</div>
-                        <div class="card-list">
-                            <div class="item-list">
-                                <div class="avatar">
-                                    <img src="../assets/img/jm_denis.jpg" alt="..." class="avatar-img rounded-circle">
-                                </div>
-                                <div class="info-user ms-3">
-                                    <div class="username">Jimmy Denis</div>
-                                    <div class="status">Graphic Designer</div>
-                                </div>
-                                <button class="btn btn-icon btn-primary btn-round btn-xs">
-                                    <i class="fa fa-plus"></i>
-                                </button>
-                            </div>
-                            <div class="item-list">
-                                <div class="avatar">
-                                    <img src="../assets/img/chadengle.jpg" alt="..." class="avatar-img rounded-circle">
-                                </div>
-                                <div class="info-user ms-3">
-                                    <div class="username">Chad</div>
-                                    <div class="status">CEO Zeleaf</div>
-                                </div>
-                                <button class="btn btn-icon btn-primary btn-round btn-xs">
-                                    <i class="fa fa-plus"></i>
-                                </button>
-                            </div>
-                            <div class="item-list">
-                                <div class="avatar">
-                                    <img src="../assets/img/talha.jpg" alt="..." class="avatar-img rounded-circle">
-                                </div>
-                                <div class="info-user ms-3">
-                                    <div class="username">Talha</div>
-                                    <div class="status">Front End Designer</div>
-                                </div>
-                                <button class="btn btn-icon btn-primary btn-round btn-xs">
-                                    <i class="fa fa-plus"></i>
-                                </button>
-                            </div>
-                            <div class="item-list">
-                                <div class="avatar">
-                                    <img src="../assets/img/mlane.jpg" alt="..." class="avatar-img rounded-circle">
-                                </div>
-                                <div class="info-user ms-3">
-                                    <div class="username">John Doe</div>
-                                    <div class="status">Back End Developer</div>
-                                </div>
-                                <button class="btn btn-icon btn-primary btn-round btn-xs">
-                                    <i class="fa fa-plus"></i>
-                                </button>
-                            </div>
-                            <div class="item-list">
-                                <div class="avatar">
-                                    <img src="../assets/img/talha.jpg" alt="..." class="avatar-img rounded-circle">
-                                </div>
-                                <div class="info-user ms-3">
-                                    <div class="username">Talha</div>
-                                    <div class="status">Front End Designer</div>
-                                </div>
-                                <button class="btn btn-icon btn-primary btn-round btn-xs">
-                                    <i class="fa fa-plus"></i>
-                                </button>
-                            </div>
-                            <div class="item-list">
-                                <div class="avatar">
-                                    <img src="../assets/img/jm_denis.jpg" alt="..." class="avatar-img rounded-circle">
-                                </div>
-                                <div class="info-user ms-3">
-                                    <div class="username">Jimmy Denis</div>
-                                    <div class="status">Graphic Designer</div>
-                                </div>
-                                <button class="btn btn-icon btn-primary btn-round btn-xs">
-                                    <i class="fa fa-plus"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card card-primary bg-primary-gradient">
-                    <div class="card-body">
-                        <h5 class="mt-3 b-b1 pb-2 mb-4 fw-bold">Active user right now</h5>
-                        <h1 class="mb-4 fw-bold">17</h1>
-                        <h5 class="mt-3 b-b1 pb-2 mb-5 fw-bold">Page view per minutes</h5>
-                        <div id="activeUsersChart"></div>
-                        <h5 class="mt-5 pb-3 mb-0 fw-bold">Top active pages</h5>
-                        <ul class="list-unstyled">
-                            <li class="d-flex justify-content-between pb-1 pt-1"><small>/product/readypro/index.html</small> <span>7</span></li>
-                            <li class="d-flex justify-content-between pb-1 pt-1"><small>/product/kaiadmin/demo.html</small> <span>10</span></li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-md-8">
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-title">Page visits</div>
-                    </div>
-                    <div class="card-body p-0">
+                    <div class="modal-body">
+                        <form method="GET" action="<?= htmlspecialchars($dashboard_action ?? 'dashboard_operator.php') ?>" class="row g-3 align-items-center mb-3">
+                            <div class="col-auto"><label for="modal_month" class="col-form-label">Bulan:</label></div>
+                            <div class="col-auto"><select name="modal_month" id="modal_month" class="form-select"><?php for ($m = 1; $m <= 12; $m++): ?><option value="<?= $m ?>" <?= ($modal_month == $m) ? 'selected' : '' ?>><?= date('F', mktime(0, 0, 0, $m, 10)) ?></option><?php endfor; ?></select></div>
+                            <div class="col-auto"><label for="modal_year" class="col-form-label">Tahun:</label></div>
+                            <div class="col-auto"><select name="modal_year" id="modal_year" class="form-select"><?php for ($y = date('Y') - 2; $y <= date('Y') + 1; $y++): ?><option value="<?= $y ?>" <?= ($modal_year == $y) ? 'selected' : '' ?>><?= $y ?></option><?php endfor; ?></select></div>
+                            <div class="col-auto"><button type="submit" class="btn btn-primary">Terapkan Filter</button></div>
+                        </form>
+                        <p>Daftar ini menampilkan anggota yang sudah lunas untuk periode <strong><?= date('F', mktime(0, 0, 0, $modal_month, 10)) ?> <?= $modal_year ?></strong>.
+                            <?php if ($main_bill_modal): ?>
+                                Berdasarkan tagihan wajib: <strong><?= htmlspecialchars($main_bill_modal['keterangan']) ?></strong>
+                            <?php else: ?>
+                                Berdasarkan pembayaran apapun yang dilakukan di bulan tersebut.
+                            <?php endif; ?></p>
                         <div class="table-responsive">
-                            <!-- Projects table -->
-                            <table class="table align-items-center mb-0">
-                                <thead class="thead-light">
+                            <table class="table table-striped table-hover">
+                                <thead>
                                     <tr>
-                                        <th scope="col">Page name</th>
-                                        <th scope="col">Visitors</th>
-                                        <th scope="col">Unique users</th>
-                                        <th scope="col">Bounce rate</th>
+                                        <th>No</th>
+                                        <th>Nama Lengkap</th>
                                     </tr>
                                 </thead>
-                                <tbody>
-                                    <tr>
-                                        <th scope="row">/kaiadmin/</th>
-                                        <td>4,569</td>
-                                        <td>340</td>
-                                        <td>
-                                            <i class="fas fa-arrow-up text-success me-3"></i>
-                                            46,53%
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <th scope="row">/kaiadmin/index.html</th>
-                                        <td>3,985</td>
-                                        <td>319</td>
-                                        <td>
-                                            <i
-                                                class="fas fa-arrow-down text-warning me-3"></i>
-                                            46,53%
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <th scope="row">/kaiadmin/charts.html</th>
-                                        <td>3,513</td>
-                                        <td>294</td>
-                                        <td>
-                                            <i
-                                                class="fas fa-arrow-down text-warning me-3"></i>
-                                            36,49%
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <th scope="row">/kaiadmin/tables.html</th>
-                                        <td>2,050</td>
-                                        <td>147</td>
-                                        <td>
-                                            <i class="fas fa-arrow-up text-success me-3"></i>
-                                            50,87%
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <th scope="row">/kaiadmin/profile.html</th>
-                                        <td>1,795</td>
-                                        <td>190</td>
-                                        <td>
-                                            <i class="fas fa-arrow-down text-danger me-3"></i>
-                                            46,53%
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <th scope="row">/kaiadmin/</th>
-                                        <td>4,569</td>
-                                        <td>340</td>
-                                        <td>
-                                            <i class="fas fa-arrow-up text-success me-3"></i>
-                                            46,53%
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <th scope="row">/kaiadmin/index.html</th>
-                                        <td>3,985</td>
-                                        <td>319</td>
-                                        <td>
-                                            <i
-                                                class="fas fa-arrow-down text-warning me-3"></i>
-                                            46,53%
-                                        </td>
-                                    </tr>
-                                </tbody>
+                                <tbody><?php if (empty($paid_users_for_modal)): ?><tr>
+                                            <td colspan="2" class="text-center"><?php if ($main_bill_modal): ?>Belum ada anggota yang lunas untuk periode ini.<?php else: ?>Tidak ada tagihan wajib untuk periode ini.<?php endif; ?></td>
+                                        </tr><?php else: ?><?php $no = 1;
+                                                            foreach ($paid_users_for_modal as $user): ?><tr>
+                                            <td><?= $no++; ?></td>
+                                            <td><?= htmlspecialchars($user['nama_lengkap']); ?></td>
+                                        </tr><?php endforeach; ?><?php endif; ?></tbody>
                             </table>
                         </div>
                     </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-title">Top Products</div>
-                    </div>
-                    <div class="card-body pb-0">
-                        <div class="d-flex">
-                            <div class="avatar">
-                                <img
-                                    src="../assets/img/logoproduct.svg"
-                                    alt="..."
-                                    class="avatar-img rounded-circle" />
-                            </div>
-                            <div class="flex-1 pt-1 ms-2">
-                                <h6 class="fw-bold mb-1">CSS</h6>
-                                <small class="text-muted">Cascading Style Sheets</small>
-                            </div>
-                            <div class="d-flex ms-auto align-items-center">
-                                <h4 class="text-info fw-bold">+$17</h4>
-                            </div>
-                        </div>
-                        <div class="separator-dashed"></div>
-                        <div class="d-flex">
-                            <div class="avatar">
-                                <img
-                                    src="../assets/img/logoproduct.svg"
-                                    alt="..."
-                                    class="avatar-img rounded-circle" />
-                            </div>
-                            <div class="flex-1 pt-1 ms-2">
-                                <h6 class="fw-bold mb-1">J.CO Donuts</h6>
-                                <small class="text-muted">The Best Donuts</small>
-                            </div>
-                            <div class="d-flex ms-auto align-items-center">
-                                <h4 class="text-info fw-bold">+$300</h4>
-                            </div>
-                        </div>
-                        <div class="separator-dashed"></div>
-                        <div class="d-flex">
-                            <div class="avatar">
-                                <img
-                                    src="../assets/img/logoproduct3.svg"
-                                    alt="..."
-                                    class="avatar-img rounded-circle" />
-                            </div>
-                            <div class="flex-1 pt-1 ms-2">
-                                <h6 class="fw-bold mb-1">Ready Pro</h6>
-                                <small class="text-muted">Bootstrap 5 Admin Dashboard</small>
-                            </div>
-                            <div class="d-flex ms-auto align-items-center">
-                                <h4 class="text-info fw-bold">+$350</h4>
-                            </div>
-                        </div>
-                        <div class="separator-dashed"></div>
-                        <div class="pull-in">
-                            <canvas id="topProductsChart"></canvas>
-                        </div>
-                    </div>
+                    <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button></div>
                 </div>
             </div>
         </div>
-        <div class="row row-card-no-pd">
+
+        <?php
+        // --- DATA FOR MONTHLY INCOME CHART ---
+        $chart_month = $_GET['chart_month'] ?? date('m');
+        $chart_year = $_GET['chart_year'] ?? date('Y');
+        $days_in_month = cal_days_in_month(CAL_GREGORIAN, $chart_month, $chart_year);
+        $chart_labels = [];
+        $chart_data = array_fill(1, $days_in_month, 0);
+        for ($day = 1; $day <= $days_in_month; $day++) {
+            $chart_labels[] = $day;
+        }
+        $q_chart = "SELECT DAY(tanggal_bayar) as day, SUM(jumlah) as total FROM pembayaran WHERE MONTH(tanggal_bayar) = ? AND YEAR(tanggal_bayar) = ? GROUP BY DAY(tanggal_bayar)";
+        $stmt_chart = $conn->prepare($q_chart);
+        $stmt_chart->bind_param("ii", $chart_month, $chart_year);
+        $stmt_chart->execute();
+        $result_chart = $stmt_chart->get_result();
+        while ($row = $result_chart->fetch_assoc()) {
+            $chart_data[intval($row['day'])] = $row['total'];
+        }
+        $stmt_chart->close();
+        ?>
+        <div class="row">
             <div class="col-md-12">
                 <div class="card">
                     <div class="card-header">
-                        <div class="card-head-row card-tools-still-right">
-                            <h4 class="card-title">Users Geolocation</h4>
-                            <div class="card-tools">
-                                <button
-                                    class="btn btn-icon btn-link btn-primary btn-xs">
-                                    <span class="fa fa-angle-down"></span>
-                                </button>
-                                <button
-                                    class="btn btn-icon btn-link btn-primary btn-xs btn-refresh-card">
-                                    <span class="fa fa-sync-alt"></span>
-                                </button>
-                                <button
-                                    class="btn btn-icon btn-link btn-primary btn-xs">
-                                    <span class="fa fa-times"></span>
-                                </button>
-                            </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h4 class="card-title">Grafik Pemasukan Bulanan</h4>
+                            <form method="GET" action="<?= htmlspecialchars($dashboard_action ?? 'dashboard_operator.php') ?>" class="d-flex align-items-center"><select name="chart_month" class="form-select form-select-sm me-2"><?php for ($m = 1; $m <= 12; $m++): ?><option value="<?= $m ?>" <?= ($chart_month == $m) ? 'selected' : '' ?>><?= date('F', mktime(0, 0, 0, $m, 10)) ?></option><?php endfor; ?></select><select name="chart_year" class="form-select form-select-sm me-2"><?php for ($y = date('Y') - 2; $y <= date('Y') + 1; $y++): ?><option value="<?= $y ?>" <?= ($chart_year == $y) ? 'selected' : '' ?>><?= $y ?></option><?php endfor; ?></select><button type="submit" class="btn btn-primary btn-sm">Filter</button></form>
                         </div>
-                        <p class="card-category">
-                            Map of the distribution of users around the world
-                        </p>
                     </div>
                     <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="table-responsive table-hover table-sales">
-                                    <table class="table">
-                                        <tbody>
-                                            <tr>
-                                                <td>
-                                                    <div class="flag">
-                                                        <img
-                                                            src="../assets/img/flags/id.png"
-                                                            alt="indonesia" />
-                                                    </div>
-                                                </td>
-                                                <td>Indonesia</td>
-                                                <td class="text-end">2.320</td>
-                                                <td class="text-end">42.18%</td>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <div class="flag">
-                                                        <img
-                                                            src="../assets/img/flags/us.png"
-                                                            alt="united states" />
-                                                    </div>
-                                                </td>
-                                                <td>USA</td>
-                                                <td class="text-end">240</td>
-                                                <td class="text-end">4.36%</td>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <div class="flag">
-                                                        <img
-                                                            src="../assets/img/flags/au.png"
-                                                            alt="australia" />
-                                                    </div>
-                                                </td>
-                                                <td>Australia</td>
-                                                <td class="text-end">119</td>
-                                                <td class="text-end">2.16%</td>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <div class="flag">
-                                                        <img
-                                                            src="../assets/img/flags/ru.png"
-                                                            alt="russia" />
-                                                    </div>
-                                                </td>
-                                                <td>Russia</td>
-                                                <td class="text-end">1.081</td>
-                                                <td class="text-end">19.65%</td>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <div class="flag">
-                                                        <img
-                                                            src="../assets/img/flags/cn.png"
-                                                            alt="china" />
-                                                    </div>
-                                                </td>
-                                                <td>China</td>
-                                                <td class="text-end">1.100</td>
-                                                <td class="text-end">20%</td>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <div class="flag">
-                                                        <img
-                                                            src="../assets/img/flags/br.png"
-                                                            alt="brazil" />
-                                                    </div>
-                                                </td>
-                                                <td>Brasil</td>
-                                                <td class="text-end">640</td>
-                                                <td class="text-end">11.63%</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mapcontainer">
-                                    <div
-                                        id="world-map"
-                                        class="w-100"
-                                        style="height: 300px"></div>
-                                </div>
-                            </div>
-                        </div>
+                        <div class="chart-container" style="position: relative; height:300px; width:100%"><canvas id="monthlyIncomeChart"></canvas></div>
                     </div>
                 </div>
             </div>
         </div>
+
+        <?php
+        // --- DATA FOR PIE CHART STATUS PEMBAYARAN ---
+        $pie_month = isset($_GET['pie_month']) ? intval($_GET['pie_month']) : (isset($_GET['modal_month']) ? intval($_GET['modal_month']) : date('m'));
+        $pie_year = isset($_GET['pie_year']) ? intval($_GET['pie_year']) : (isset($_GET['modal_year']) ? intval($_GET['modal_year']) : date('Y'));
+
+        $pie_chart_data = ['Lunas' => 0, 'Telat' => 0, 'Belum Lunas' => 0];
+
+        // Ambil satu tagihan utama untuk bulan yang dipilih
+        $main_bill_pie = null;
+        $stmt_bill_pie = $conn->prepare("SELECT id_kas, jumlah FROM kas WHERE jenis = 'pemasukan' AND MONTH(tanggal) = ? AND YEAR(tanggal) = ? ORDER BY id_kas ASC LIMIT 1");
+        $stmt_bill_pie->bind_param("ii", $pie_month, $pie_year);
+        $stmt_bill_pie->execute();
+        $result_bill_pie = $stmt_bill_pie->get_result();
+        if ($result_bill_pie->num_rows > 0) {
+            $main_bill_pie = $result_bill_pie->fetch_assoc();
+        }
+        $stmt_bill_pie->close();
+
+        if (count($students) > 0) {
+            $lunas_count = 0;
+            $telat_count = 0;
+            $paid_students_pie = [];
+
+            if ($main_bill_pie) {
+                // --- LOGIKA JIKA ADA TAGIHAN UTAMA ---
+                $id_kas_pie = $main_bill_pie['id_kas'];
+                $required_amount_pie = $main_bill_pie['jumlah'];
+
+                foreach ($students as $student) {
+                    $id_user_pie = $student['id_user'];
+                    $total_paid_pie = 0;
+                    $stmt_paid_pie = $conn->prepare("SELECT SUM(jumlah) FROM pembayaran WHERE id_user = ? AND id_kas = ?");
+                    $stmt_paid_pie->bind_param("ii", $id_user_pie, $id_kas_pie);
+                    $stmt_paid_pie->execute();
+                    $stmt_paid_pie->bind_result($sum_paid_pie);
+                    if ($stmt_paid_pie->fetch()) {
+                        $total_paid_pie = $sum_paid_pie ?? 0;
+                    }
+                    $stmt_paid_pie->close();
+
+                    if ($total_paid_pie >= $required_amount_pie) {
+                        $paid_students_pie[] = $id_user_pie;
+                        $is_late_pie = false;
+                        $stmt_late_pie = $conn->prepare("SELECT 1 FROM pembayaran WHERE id_user = ? AND id_kas = ? AND status = 'telat' LIMIT 1");
+                        $stmt_late_pie->bind_param("ii", $id_user_pie, $id_kas_pie);
+                        $stmt_late_pie->execute();
+                        if ($stmt_late_pie->fetch()) {
+                            $is_late_pie = true;
+                        }
+                        $stmt_late_pie->close();
+
+                        if ($is_late_pie) {
+                            $telat_count++;
+                        } else {
+                            $lunas_count++;
+                        }
+                    }
+                }
+            } else {
+                // --- LOGIKA JIKA TIDAK ADA TAGIHAN UTAMA ---
+                foreach ($students as $student) {
+                    $id_user_pie = $student['id_user'];
+                    $payments_in_month_pie = [];
+                    $stmt_payments_pie = $conn->prepare("SELECT status FROM pembayaran WHERE id_user = ? AND MONTH(tanggal_bayar) = ? AND YEAR(tanggal_bayar) = ?");
+                    $stmt_payments_pie->bind_param("iii", $id_user_pie, $pie_month, $pie_year);
+                    $stmt_payments_pie->execute();
+                    $result_payments_pie = $stmt_payments_pie->get_result();
+                    while ($row = $result_payments_pie->fetch_assoc()) {
+                        $payments_in_month_pie[] = $row;
+                    }
+                    $stmt_payments_pie->close();
+
+                    if (!empty($payments_in_month_pie)) {
+                        $paid_students_pie[] = $id_user_pie;
+                        $is_late_payment_found_pie = false;
+                        foreach ($payments_in_month_pie as $payment) {
+                            if ($payment['status'] === 'telat') {
+                                $is_late_payment_found_pie = true;
+                                break;
+                            }
+                        }
+                        if ($is_late_payment_found_pie) {
+                            $telat_count++;
+                        } else {
+                            $lunas_count++;
+                        }
+                    }
+                }
+            }
+
+            $pie_chart_data['Lunas'] = $lunas_count;
+            $pie_chart_data['Telat'] = $telat_count;
+            $pie_chart_data['Belum Lunas'] = count($students) - count(array_unique($paid_students_pie));
+        }
+        ?>
+        <!-- Debug Info (hapus setelah selesai debugging) -->
+        <!-- pie_month: <?= $pie_month ?>, pie_year: <?= $pie_year ?>, main_bill_pie: <?= $main_bill_pie ? 'Ada' : 'Tidak Ada' ?>, total_students: <?= count($students) ?>, lunas: <?= $pie_chart_data['Lunas'] ?>, telat: <?= $pie_chart_data['Telat'] ?>, belum_lunas: <?= $pie_chart_data['Belum Lunas'] ?> --> <!-- Grafik Pie Status Pembayaran -->
         <div class="row">
             <div class="col-md-6">
                 <div class="card">
                     <div class="card-header">
-                        <div class="card-head-row card-tools-still-right">
-                            <div class="card-title">Recent Activity</div>
-                            <div class="card-tools">
-                                <div class="dropdown">
-                                    <button
-                                        class="btn btn-icon btn-clean"
-                                        type="button"
-                                        id="dropdownMenuButton"
-                                        data-bs-toggle="dropdown"
-                                        aria-haspopup="true"
-                                        aria-expanded="false">
-                                        <i class="fas fa-ellipsis-h"></i>
-                                    </button>
-                                    <div
-                                        class="dropdown-menu"
-                                        aria-labelledby="dropdownMenuButton">
-                                        <a class="dropdown-item" href="#">Action</a>
-                                        <a class="dropdown-item" href="#">Another action</a>
-                                        <a class="dropdown-item" href="#">Something else here</a>
-                                    </div>
-                                </div>
-                            </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h4 class="card-title">Status Pembayaran Siswa</h4>
+                            <form method="GET" action="<?= htmlspecialchars($dashboard_action ?? 'dashboard_operator.php') ?>" class="d-flex align-items-center gap-2">
+                                <select name="pie_month" class="form-select form-select-sm">
+                                    <?php for ($m = 1; $m <= 12; $m++): ?>
+                                        <option value="<?= $m ?>" <?= ($pie_month == $m) ? 'selected' : '' ?>><?= date('F', mktime(0, 0, 0, $m, 10)) ?></option>
+                                    <?php endfor; ?>
+                                </select>
+                                <select name="pie_year" class="form-select form-select-sm">
+                                    <?php for ($y = date('Y') - 2; $y <= date('Y') + 1; $y++): ?>
+                                        <option value="<?= $y ?>" <?= ($pie_year == $y) ? 'selected' : '' ?>><?= $y ?></option>
+                                    <?php endfor; ?>
+                                </select>
+                                <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+                            </form>
                         </div>
                     </div>
                     <div class="card-body">
-                        <ol class="activity-feed">
-                            <li class="feed-item feed-item-secondary">
-                                <time class="date" datetime="9-25">Sep 25</time>
-                                <span class="text">Responded to need
-                                    <a href="#">"Volunteer opportunity"</a></span>
-                            </li>
-                            <li class="feed-item feed-item-success">
-                                <time class="date" datetime="9-24">Sep 24</time>
-                                <span class="text">Added an interest
-                                    <a href="#">"Volunteer Activities"</a></span>
-                            </li>
-                            <li class="feed-item feed-item-info">
-                                <time class="date" datetime="9-23">Sep 23</time>
-                                <span class="text">Joined the group
-                                    <a href="single-group.php">"Boardsmanship Forum"</a></span>
-                            </li>
-                            <li class="feed-item feed-item-warning">
-                                <time class="date" datetime="9-21">Sep 21</time>
-                                <span class="text">Responded to need
-                                    <a href="#">"In-Kind Opportunity"</a></span>
-                            </li>
-                            <li class="feed-item feed-item-danger">
-                                <time class="date" datetime="9-18">Sep 18</time>
-                                <span class="text">Created need
-                                    <a href="#">"Volunteer Opportunity"</a></span>
-                            </li>
-                            <li class="feed-item">
-                                <time class="date" datetime="9-17">Sep 17</time>
-                                <span class="text">Attending the event
-                                    <a href="single-event.php">"Some New Event"</a></span>
-                            </li>
-                        </ol>
+                        <div class="chart-container" style="position: relative; height:300px; width:100%">
+                            <canvas id="paymentStatusChart"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
             <div class="col-md-6">
                 <div class="card">
                     <div class="card-header">
-                        <div class="card-head-row">
-                            <div class="card-title">Support Tickets</div>
-                            <div class="card-tools">
-                                <ul
-                                    class="nav nav-pills nav-secondary nav-pills-no-bd nav-sm"
-                                    id="pills-tab"
-                                    role="tablist">
-                                    <li class="nav-item">
-                                        <a
-                                            class="nav-link"
-                                            id="pills-today"
-                                            data-bs-toggle="pill"
-                                            href="#pills-today"
-                                            role="tab"
-                                            aria-selected="true">Today</a>
-                                    </li>
-                                    <li class="nav-item">
-                                        <a
-                                            class="nav-link active"
-                                            id="pills-week"
-                                            data-bs-toggle="pill"
-                                            href="#pills-week"
-                                            role="tab"
-                                            aria-selected="false">Week</a>
-                                    </li>
-                                    <li class="nav-item">
-                                        <a
-                                            class="nav-link"
-                                            id="pills-month"
-                                            data-bs-toggle="pill"
-                                            href="#pills-month"
-                                            role="tab"
-                                            aria-selected="false">Month</a>
-                                    </li>
-                                </ul>
+                        <h4 class="card-title">Ringkasan Status Pembayaran</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <h6 class="text-muted">Periode: <?= date('F Y', mktime(0, 0, 0, $pie_month, 1, $pie_year)) ?></h6>
+                            <?php if (!$main_bill_pie): ?>
+                                <p class="text-warning small mt-2"><i class="fas fa-info-circle"></i> Tidak ada tagihan wajib untuk periode ini. Data ditampilkan berdasarkan pembayaran yang dilakukan siswa.</p>
+                            <?php endif; ?>
+                        </div>
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between">
+                                <span><i class="fas fa-circle text-success me-2"></i>Lunas</span>
+                                <strong><?= $pie_chart_data['Lunas'] ?> Orang</strong>
                             </div>
+                        </div>
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between">
+                                <span><i class="fas fa-circle text-info me-2"></i>Telat</span>
+                                <strong><?= $pie_chart_data['Telat'] ?> Orang</strong>
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between">
+                                <span><i class="fas fa-circle text-danger me-2"></i>Belum Lunas</span>
+                                <strong><?= $pie_chart_data['Belum Lunas'] ?> Orang</strong>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="d-flex justify-content-between">
+                            <span><strong>Total Siswa</strong></span>
+                            <strong><?= count($students) ?> Orang</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <?php
+        // --- DATA FOR INTERACTIVE EXPENSE CHART ---
+        $expense_details = [];
+        $query_expense_details = "
+            SELECT
+                kk.nama as category_name,
+                k.keterangan as expense_description,
+                k.jumlah as expense_amount
+            FROM kas k
+            JOIN kas_kategori kk ON k.id_kategori = kk.id_kategori
+            WHERE k.jenis = 'pengeluaran' AND k.jumlah > 0 AND k.keterangan IS NOT NULL AND k.keterangan != ''
+            ORDER BY kk.nama, k.tanggal DESC;
+        ";
+
+        $result_expense_details = mysqli_query($conn, $query_expense_details);
+
+        if ($result_expense_details) {
+            while ($row = mysqli_fetch_assoc($result_expense_details)) {
+                $category = $row['category_name'];
+                if (!isset($expense_details[$category])) {
+                    $expense_details[$category] = [];
+                }
+                $expense_details[$category][] = [
+                    'keterangan' => $row['expense_description'],
+                    'jumlah' => $row['expense_amount']
+                ];
+            }
+        }
+        ?>
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h4 id="expenseChartTitle" class="card-title">Grafik Pengeluaran per Kategori</h4>
+                            <button id="back-to-categories" class="btn btn-secondary btn-sm" style="display:none;">&larr; Kembali</button>
                         </div>
                     </div>
                     <div class="card-body">
-                        <div class="d-flex">
-                            <div class="avatar avatar-online">
-                                <span
-                                    class="avatar-title rounded-circle border border-white bg-info">J</span>
-                            </div>
-                            <div class="flex-1 ms-3 pt-1">
-                                <h6 class="text-uppercase fw-bold mb-1">
-                                    Joko Subianto
-                                    <span class="text-warning ps-3">pending</span>
-                                </h6>
-                                <span class="text-muted">I am facing some trouble with my viewport. When i
-                                    start my</span>
-                            </div>
-                            <div class="float-end pt-1">
-                                <small class="text-muted">8:40 PM</small>
-                            </div>
+                        <div id="category-filters" class="mb-3">
+                            <!-- Filter badges will be inserted here by JavaScript -->
                         </div>
-                        <div class="separator-dashed"></div>
-                        <div class="d-flex">
-                            <div class="avatar avatar-offline">
-                                <span
-                                    class="avatar-title rounded-circle border border-white bg-secondary">P</span>
-                            </div>
-                            <div class="flex-1 ms-3 pt-1">
-                                <h6 class="text-uppercase fw-bold mb-1">
-                                    Prabowo Widodo
-                                    <span class="text-success ps-3">open</span>
-                                </h6>
-                                <span class="text-muted">I have some query regarding the license issue.</span>
-                            </div>
-                            <div class="float-end pt-1">
-                                <small class="text-muted">1 Day Ago</small>
-                            </div>
+                        <div class="chart-container" style="position: relative; height:300px; width:100%">
+                            <canvas id="expenseByCategoryChart"></canvas>
                         </div>
-                        <div class="separator-dashed"></div>
-                        <div class="d-flex">
-                            <div class="avatar avatar-away">
-                                <span
-                                    class="avatar-title rounded-circle border border-white bg-danger">L</span>
-                            </div>
-                            <div class="flex-1 ms-3 pt-1">
-                                <h6 class="text-uppercase fw-bold mb-1">
-                                    Lee Chong Wei
-                                    <span class="text-muted ps-3">closed</span>
-                                </h6>
-                                <span class="text-muted">Is there any update plan for RTL version near
-                                    future?</span>
-                            </div>
-                            <div class="float-end pt-1">
-                                <small class="text-muted">2 Days Ago</small>
-                            </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Grafik Status Pembayaran per Anggota -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="d-flex align-items-center w-100">
+                            <form method="GET" action="<?= htmlspecialchars($dashboard_action ?? 'dashboard_operator.php') ?>" class="d-flex align-items-center gap-2">
+                                <select name="bar_chart_month" class="form-select form-select-sm me-2">
+                                    <?php
+                                    // Definisikan variabel ini di dashboard_operator.php sebelum bagian ini
+                                    $bar_chart_month = $_GET['bar_chart_month'] ?? date('m');
+                                    $bar_chart_year = $_GET['bar_chart_year'] ?? date('Y');
+                                    for ($m = 1; $m <= 12; $m++): ?>
+                                        <option value="<?= $m ?>" <?= ($bar_chart_month == $m) ? 'selected' : '' ?>>
+                                            <?= date('F', mktime(0, 0, 0, $m, 10)) ?>
+                                        </option>
+                                    <?php endfor; ?>
+                                </select>
+                                <select name="bar_chart_year" class="form-select form-select-sm me-2">
+                                    <?php for ($y = date('Y') - 2; $y <= date('Y') + 1; $y++): ?>
+                                        <option value="<?= $y ?>" <?= ($bar_chart_year == $y) ? 'selected' : '' ?>>
+                                            <?= $y ?>
+                                        </option>
+                                    <?php endfor; ?>
+                                </select>
+                                <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+                            </form>
+                            <h4 class="card-title ms-auto mb-0">Grafik Status Pembayaran per Anggota</h4>
                         </div>
-                        <div class="separator-dashed"></div>
-                        <div class="d-flex">
-                            <div class="avatar avatar-offline">
-                                <span
-                                    class="avatar-title rounded-circle border border-white bg-secondary">P</span>
+                    </div>
+                    <div class="card-body">
+                        <?php if (empty($user_payment_summary_data['labels'])): ?>
+                            <div class="text-center p-4">
+                                <p class="text-muted">Tidak ada data pembayaran untuk ditampilkan pada tahun <?= $summary_year ?>.</p>
+                                <p class="text-muted small">Pastikan ada tagihan (Kas Pemasukan) yang telah dibuat untuk tahun ini.</p>
                             </div>
-                            <div class="flex-1 ms-3 pt-1">
-                                <h6 class="text-uppercase fw-bold mb-1">
-                                    Peter Parker
-                                    <span class="text-success ps-3">open</span>
-                                </h6>
-                                <span class="text-muted">I have some query regarding the license issue.</span>
+                        <?php else: ?>
+                            <div class="chart-container" style="position: relative; height:400px; width:100%">
+                                <canvas id="userPaymentSummaryChart"></canvas>
                             </div>
-                            <div class="float-end pt-1">
-                                <small class="text-muted">2 Day Ago</small>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stacked: Status Pembayaran per Anggota (3/6 bulan) -->
+        <div class="row mt-3">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="d-flex align-items-center w-100">
+                            <div class="d-flex align-items-center gap-2">
+                                <label class="mb-0">Periode:</label>
+                                <select id="stacked_period" class="form-select form-select-sm ms-2" style="width:110px">
+                                    <option value="3">3 Bulan</option>
+                                    <option value="6">6 Bulan</option>
+                                </select>
+                                <button id="refreshStacked" class="btn btn-sm btn-primary ms-2">Refresh</button>
                             </div>
+                            <h4 class="card-title ms-auto mb-0"> (Stacked per Bulan)</h4>
                         </div>
-                        <div class="separator-dashed"></div>
-                        <div class="d-flex">
-                            <div class="avatar avatar-away">
-                                <span
-                                    class="avatar-title rounded-circle border border-white bg-danger">L</span>
-                            </div>
-                            <div class="flex-1 ms-3 pt-1">
-                                <h6 class="text-uppercase fw-bold mb-1">
-                                    Logan Paul <span class="text-muted ps-3">closed</span>
-                                </h6>
-                                <span class="text-muted">Is there any update plan for RTL version near
-                                    future?</span>
-                            </div>
-                            <div class="float-end pt-1">
-                                <small class="text-muted">2 Days Ago</small>
-                            </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container" style="position: relative; height:480px; width:100%">
+                            <canvas id="memberPaymentStackedChart"></canvas>
+                        </div>
+                        <div class="mt-2 small text-muted">Warna: <span class="badge" style="background:#2ecc71">&nbsp;</span> Lunas &nbsp; <span class="badge" style="background:#3498db">&nbsp;</span> Telat &nbsp; <span class="badge" style="background:#e74c3c">&nbsp;</span> Belum Lunas</div>
+                        <div class="small text-muted mt-1">Status telat dia membayar walaupun jatuh tempo</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Grafik Radar Aktivitas Operator -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h4 class="card-title">Grafik Radar Aktivitas Operator</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container" style="position: relative; height:300px; width:100%">
+                            <canvas id="operatorActivityRadarChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                // Modal auto-open script
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.has('modal_month') || urlParams.has('modal_year')) {
+                    var paidModal = new bootstrap.Modal(document.getElementById('paid-modal'));
+                    paidModal.show();
+                }
+
+                // Monthly Income Chart script
+                var monthlyIncomeCtx = document.getElementById('monthlyIncomeChart').getContext('2d');
+                var monthlyIncomeChart = new Chart(monthlyIncomeCtx, {
+                    type: 'line',
+                    data: {
+                        labels: <?= json_encode($chart_labels) ?>,
+                        datasets: [{
+                            label: "Pemasukan",
+                            borderColor: '#177dff',
+                            pointBackgroundColor: '#177dff',
+                            backgroundColor: 'rgba(23, 125, 255, 0.2)',
+                            borderWidth: 2,
+                            data: <?= json_encode(array_values($chart_data)) ?>,
+                            fill: true,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.y !== null) {
+                                            label += new Intl.NumberFormat('id-ID', {
+                                                style: 'currency',
+                                                currency: 'IDR',
+                                                minimumFractionDigits: 0
+                                            }).format(context.parsed.y);
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value, index, values) {
+                                        return new Intl.NumberFormat('id-ID', {
+                                            style: 'currency',
+                                            currency: 'IDR',
+                                            minimumFractionDigits: 0
+                                        }).format(value);
+                                    }
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // Payment Status Pie Chart script
+                var paymentStatusCtx = document.getElementById('paymentStatusChart').getContext('2d');
+                var chartLabels = <?= json_encode(array_keys($pie_chart_data)) ?>;
+                var chartValues = <?= json_encode(array_values($pie_chart_data)) ?>;
+                console.log('Pie Chart Data:', {
+                    labels: chartLabels,
+                    values: chartValues
+                });
+
+                var paymentStatusChart = new Chart(paymentStatusCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: chartLabels,
+                        datasets: [{
+                            data: chartValues,
+                            backgroundColor: ['#2ecc71', '#3498db', '#e74c3c'],
+                            borderColor: ['#27ae60', '#2980b9', '#c0392b'],
+                            borderWidth: 2,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    padding: 15,
+                                    usePointStyle: true
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed !== null) {
+                                            label += context.parsed + ' Orang';
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // --- INTERACTIVE EXPENSE CHART SCRIPT ---
+                const expenseData = <?= json_encode($expense_details) ?>;
+                const expenseCtx = document.getElementById('expenseByCategoryChart').getContext('2d');
+                const expenseChartTitle = document.getElementById('expenseChartTitle');
+                const categoryFiltersContainer = document.getElementById('category-filters');
+                const backButton = document.getElementById('back-to-categories');
+                let expenseChart;
+
+                function formatCurrency(value) {
+                    return new Intl.NumberFormat('id-ID', {
+                        style: 'currency',
+                        currency: 'IDR',
+                        minimumFractionDigits: 0
+                    }).format(value);
+                }
+
+                const chartOptions = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) label += ': ';
+                                    if (context.parsed.y !== null) label += formatCurrency(context.parsed.y);
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: (value) => formatCurrency(value)
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                };
+
+                function renderCategoryView() {
+                    const categoryLabels = Object.keys(expenseData);
+                    const categoryTotals = categoryLabels.map(category => {
+                        return expenseData[category].reduce((sum, item) => sum + parseFloat(item.jumlah), 0);
+                    });
+
+                    const chartData = {
+                        labels: categoryLabels,
+                        datasets: [{
+                            label: "Total Pengeluaran",
+                            backgroundColor: '#f3545d',
+                            borderColor: '#f3545d',
+                            data: categoryTotals,
+                        }]
+                    };
+
+                    if (expenseChart) {
+                        expenseChart.data = chartData;
+                        expenseChart.update();
+                    } else {
+                        expenseChart = new Chart(expenseCtx, {
+                            type: 'bar',
+                            data: chartData,
+                            options: chartOptions
+                        });
+                    }
+
+                    expenseChartTitle.textContent = 'Grafik Pengeluaran per Kategori';
+                    backButton.style.display = 'none';
+                    categoryFiltersContainer.style.display = 'block';
+                }
+
+                function renderDetailView(category) {
+                    const details = expenseData[category];
+                    const detailLabels = details.map(item => item.keterangan);
+                    const detailData = details.map(item => item.jumlah);
+
+                    expenseChart.data.labels = detailLabels;
+                    expenseChart.data.datasets[0].data = detailData;
+                    expenseChart.update();
+
+                    expenseChartTitle.textContent = 'Detail Pengeluaran: ' + category;
+                    backButton.style.display = 'block';
+                    categoryFiltersContainer.style.display = 'none';
+                }
+
+                function createCategoryFilters() {
+                    categoryFiltersContainer.innerHTML = ''; // Clear existing filters
+                    const categories = Object.keys(expenseData);
+                    if (categories.length === 0) {
+                        categoryFiltersContainer.innerHTML = '<p class="text-muted">Belum ada data pengeluaran berkategori untuk ditampilkan.</p>';
+                        return;
+                    }
+                    categories.forEach(category => {
+                        const button = document.createElement('button');
+                        button.className = 'btn btn-outline-primary btn-sm me-2 mb-2';
+                        button.textContent = category;
+                        button.onclick = () => renderDetailView(category);
+                        categoryFiltersContainer.appendChild(button);
+                    });
+                }
+
+                // Initial setup
+                createCategoryFilters();
+                renderCategoryView();
+
+                backButton.addEventListener('click', renderCategoryView);
+
+                // --- USER PAYMENT SUMMARY BAR CHART SCRIPT ---
+                const summaryData = <?= json_encode($user_payment_summary_data) ?>;
+                const userPaymentSummaryCtx = document.getElementById('userPaymentSummaryChart');
+
+                if (userPaymentSummaryCtx) {
+                    new Chart(userPaymentSummaryCtx.getContext('2d'), {
+                        type: 'bar',
+                        data: summaryData,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    position: 'bottom',
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            let label = context.dataset.label || '';
+                                            if (label) {
+                                                label += ': ';
+                                            }
+                                            if (context.parsed.y !== null) {
+                                                label += context.parsed.y.toFixed(2) + '%';
+                                            }
+                                            return label;
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    stacked: true,
+                                    grid: {
+                                        display: false
+                                    }
+                                },
+                                y: {
+                                    stacked: true,
+                                    max: 100,
+                                    ticks: {
+                                        callback: function(value) {
+                                            return value + '%'
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // --- STACKED MEMBER PAYMENT CHART (AJAX) ---
+                let stackedChart;
+                async function loadStackedChart(period, startMonth, startYear) {
+                    // admin pages live under /admin/, API is in /operator/
+                    let url = '../operator/api_payment_status.php?period=' + encodeURIComponent(period);
+                    if (startMonth && startYear) {
+                        url += '&start_month=' + encodeURIComponent(startMonth) + '&start_year=' + encodeURIComponent(startYear);
+                    }
+                    const resp = await fetch(url);
+                    if (!resp.ok) return;
+                    const json = await resp.json();
+
+                    const ctx = document.getElementById('memberPaymentStackedChart').getContext('2d');
+
+                    const data = {
+                        labels: json.users,
+                        datasets: json.datasets.map(ds => ({
+                            label: ds.label,
+                            data: ds.data,
+                            backgroundColor: ds.backgroundColor,
+                            borderColor: ds.borderColor,
+                            borderWidth: ds.borderWidth
+                        }))
+                    };
+
+                    const options = {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const user = context.label;
+                                        const month = context.dataset.label;
+                                        const statusColor = context.dataset.backgroundColor[context.dataIndex];
+                                        let statusText = '';
+                                        if (statusColor === '#2ecc71') statusText = 'Lunas';
+                                        else if (statusColor === '#3498db') statusText = 'Telat';
+                                        else statusText = 'Belum Lunas';
+                                        return month + ' — ' + user + ': ' + statusText;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                stacked: true,
+                                grid: {
+                                    display: false
+                                }
+                            },
+                            y: {
+                                stacked: true,
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Bulan (jumlah segmen = periode)'
+                                }
+                            }
+                        }
+                    };
+
+                    if (stackedChart) {
+                        stackedChart.data = data;
+                        stackedChart.options = options;
+                        stackedChart.update();
+                    } else {
+                        stackedChart = new Chart(ctx, {
+                            type: 'bar',
+                            data: data,
+                            options: options
+                        });
+                    }
+                }
+
+                document.getElementById('refreshStacked').addEventListener('click', function() {
+                    const period = parseInt(document.getElementById('stacked_period').value, 10) || 3;
+                    // If period is 3, load starting from October of current year as requested
+                    if (period === 3) {
+                        const curYear = new Date().getFullYear();
+                        loadStackedChart(period, 10, curYear);
+                    } else {
+                        loadStackedChart(period);
+                    }
+                });
+
+                // initialize default period = 3
+                document.getElementById('stacked_period').value = '3';
+                // load default 3-month view starting at October of current year
+                const initYear = new Date().getFullYear();
+                loadStackedChart(3, 10, initYear);
+
+                // --- RADAR CHART FOR OPERATOR ACTIVITY ---
+                var totalPengumuman = <?= $total_pengumuman ?? 0 ?>;
+                var totalAgenda = <?= $total_agenda ?? 0 ?>;
+                var operatorActivityRadarCtx = document.getElementById('operatorActivityRadarChart').getContext('2d');
+                new Chart(operatorActivityRadarCtx, {
+                    type: 'radar',
+                    data: {
+                        labels: ['Jumlah Pengumuman', 'Jumlah Agenda'],
+                        datasets: [{
+                            label: 'Total',
+                            data: [totalPengumuman, totalAgenda],
+                            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 1,
+                            pointBackgroundColor: 'rgba(54, 162, 235, 1)',
+                            pointBorderColor: '#fff',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: 'rgba(54, 162, 235, 1)'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                            },
+                            title: {
+                                display: true,
+                                text: 'Aktivitas Operator'
+                            }
+                        },
+                        scales: {
+                            r: {
+                                angleLines: {
+                                    display: true
+                                },
+                                suggestedMin: 0,
+                                ticks: {
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    }
+                });
+            });
+        </script>
+
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">Pengumuman Terbaru</div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table align-items-center mb-0">
+                                <thead class="thead-light">
+                                    <tr>
+                                        <th scope="col">Tema</th>
+                                        <th scope="col">Isi</th>
+                                        <th scope="col">Tanggal Posting</th>
+                                        <th scope="col">Label</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php
+                                    // Ambil 5 pengumuman terbaru
+                                    $query_announcements = "SELECT tema, isi, tanggal_posting, label FROM announcements ORDER BY tanggal_posting DESC LIMIT 5";
+                                    $result_announcements = mysqli_query($conn, $query_announcements);
+
+                                    if (mysqli_num_rows($result_announcements) > 0) {
+                                        while ($row = mysqli_fetch_assoc($result_announcements)) {
+                                            echo "<tr>";
+                                            echo "<td>" . htmlspecialchars($row['tema']) . "</td>";
+                                            // Batasi panjang isi
+                                            $isi_pendek = strlen($row['isi']) > 50 ? substr($row['isi'], 0, 50) . "..." : $row['isi'];
+                                            echo "<td>" . htmlspecialchars($isi_pendek) . "</td>";
+                                            echo "<td>" . date('d M Y', strtotime($row['tanggal_posting'])) . "</td>";
+                                            echo "<td>";
+                                            if (!empty($row['label'])) {
+                                                $badge_class = $row['label'] == 'PENTING' ? 'badge bg-danger' : 'badge bg-secondary';
+                                                echo "<span class='" . $badge_class . "'>" . htmlspecialchars($row['label']) . "</span>";
+                                            }
+                                            echo "</td>";
+                                            echo "</tr>";
+                                        }
+                                    } else {
+                                        echo "<tr><td colspan='4' class='text-center'>Tidak ada pengumuman.</td></tr>";
+                                    }
+                                    ?>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>

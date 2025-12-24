@@ -43,10 +43,10 @@ $total_pengeluaran = $stmt->get_result()->fetch_assoc()['total'] ?? 0;
 $saldo_akhir = $saldo_awal + $total_pemasukan - $total_pengeluaran;
 
 $stmt->close();
-$conn->close();
 ?>
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <title>Balance Sheet - KASPER</title>
@@ -55,13 +55,27 @@ $conn->close();
 
     <!-- Fonts and icons -->
     <script src="../assets/js/plugin/webfont/webfont.min.js"></script>
-    <script> WebFont.load({ google: { families: ["Public Sans:300,400,500,600,700"] }, custom: { families: ["Font Awesome 5 Solid", "Font Awesome 5 Regular", "Font Awesome 5 Brands", "simple-line-icons"], urls: ["../assets/css/fonts.min.css"], }, active: function() { sessionStorage.fonts = true; }, }); </script>
+    <script>
+        WebFont.load({
+            google: {
+                families: ["Public Sans:300,400,500,600,700"]
+            },
+            custom: {
+                families: ["Font Awesome 5 Solid", "Font Awesome 5 Regular", "Font Awesome 5 Brands", "simple-line-icons"],
+                urls: ["../assets/css/fonts.min.css"],
+            },
+            active: function() {
+                sessionStorage.fonts = true;
+            },
+        });
+    </script>
 
     <!-- CSS Files -->
     <link rel="stylesheet" href="../assets/css/bootstrap.min.css" />
     <link rel="stylesheet" href="../assets/css/plugins.min.css" />
     <link rel="stylesheet" href="../assets/css/kaiadmin.min.css" />
 </head>
+
 <body>
     <div class="wrapper">
         <?php include 'layout_operator/sidebar.php'; ?>
@@ -92,7 +106,9 @@ $conn->close();
 
                     <!-- Filter Card -->
                     <div class="card">
-                        <div class="card-header"><h4 class="card-title">Pilih Periode Laporan</h4></div>
+                        <div class="card-header">
+                            <h4 class="card-title">Pilih Periode Laporan</h4>
+                        </div>
                         <div class="card-body">
                             <form method="GET" action="">
                                 <div class="row align-items-end">
@@ -130,9 +146,14 @@ $conn->close();
                                     <div class="card card-stats card-secondary card-round">
                                         <div class="card-body">
                                             <div class="row align-items-center">
-                                                <div class="col-icon"><div class="icon-big text-center"><i class="fas fa-download"></i></div></div>
+                                                <div class="col-icon">
+                                                    <div class="icon-big text-center"><i class="fas fa-download"></i></div>
+                                                </div>
                                                 <div class="col col-stats ms-3 ms-sm-0">
-                                                    <div class="numbers"><p class="card-category">Saldo Awal Periode</p><h4 class="card-title">Rp <?= number_format($saldo_awal, 0, ',', '.') ?></h4></div>
+                                                    <div class="numbers">
+                                                        <p class="card-category">Saldo Awal Periode</p>
+                                                        <h4 class="card-title">Rp <?= number_format($saldo_awal, 0, ',', '.') ?></h4>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -143,9 +164,14 @@ $conn->close();
                                     <div class="card card-stats card-success card-round">
                                         <div class="card-body">
                                             <div class="row align-items-center">
-                                                <div class="col-icon"><div class="icon-big text-center"><i class="fas fa-arrow-alt-circle-down"></i></div></div>
+                                                <div class="col-icon">
+                                                    <div class="icon-big text-center"><i class="fas fa-arrow-alt-circle-down"></i></div>
+                                                </div>
                                                 <div class="col col-stats ms-3 ms-sm-0">
-                                                    <div class="numbers"><p class="card-category">Total Pemasukan (Aset)</p><h4 class="card-title">Rp <?= number_format($total_pemasukan, 0, ',', '.') ?></h4></div>
+                                                    <div class="numbers">
+                                                        <p class="card-category">Total Pemasukan (Aset)</p>
+                                                        <h4 class="card-title">Rp <?= number_format($total_pemasukan, 0, ',', '.') ?></h4>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -156,9 +182,14 @@ $conn->close();
                                     <div class="card card-stats card-danger card-round">
                                         <div class="card-body">
                                             <div class="row align-items-center">
-                                                <div class="col-icon"><div class="icon-big text-center"><i class="fas fa-arrow-alt-circle-up"></i></div></div>
+                                                <div class="col-icon">
+                                                    <div class="icon-big text-center"><i class="fas fa-arrow-alt-circle-up"></i></div>
+                                                </div>
                                                 <div class="col col-stats ms-3 ms-sm-0">
-                                                    <div class="numbers"><p class="card-category">Total Pengeluaran (Kewajiban)</p><h4 class="card-title">Rp <?= number_format($total_pengeluaran, 0, ',', '.') ?></h4></div>
+                                                    <div class="numbers">
+                                                        <p class="card-category">Total Pengeluaran (Kewajiban)</p>
+                                                        <h4 class="card-title">Rp <?= number_format($total_pengeluaran, 0, ',', '.') ?></h4>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -169,9 +200,14 @@ $conn->close();
                                     <div class="card card-stats card-primary card-round">
                                         <div class="card-body">
                                             <div class="row align-items-center">
-                                                <div class="col-icon"><div class="icon-big text-center"><i class="fas fa-wallet"></i></div></div>
+                                                <div class="col-icon">
+                                                    <div class="icon-big text-center"><i class="fas fa-wallet"></i></div>
+                                                </div>
                                                 <div class="col col-stats ms-3 ms-sm-0">
-                                                    <div class="numbers"><p class="card-category">Saldo Akhir Periode</p><h4 class="card-title">Rp <?= number_format($saldo_akhir, 0, ',', '.') ?></h4></div>
+                                                    <div class="numbers">
+                                                        <p class="card-category">Saldo Akhir Periode</p>
+                                                        <h4 class="card-title">Rp <?= number_format($saldo_akhir, 0, ',', '.') ?></h4>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -197,4 +233,5 @@ $conn->close();
     <!-- Kaiadmin JS -->
     <script src="../assets/js/kaiadmin.min.js"></script>
 </body>
+
 </html>

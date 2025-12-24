@@ -13,7 +13,7 @@
             </div>
         </div>
 
-        <?php include 'grafik_arus_kas.php'; ?>
+        <?php include __DIR__ . '/../grafik_arus_kas.php'; ?>
 
 
         <?php
@@ -589,6 +589,34 @@
             </div>
         </div>
 
+        <!-- Stacked: Status Pembayaran per Anggota (3/6 bulan) -->
+        <div class="row mt-3">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="d-flex align-items-center w-100">
+                            <div class="d-flex align-items-center gap-2">
+                                <label class="mb-0">Periode:</label>
+                                <select id="stacked_period" class="form-select form-select-sm ms-2" style="width:110px">
+                                    <option value="3">3 Bulan</option>
+                                    <option value="6">6 Bulan</option>
+                                </select>
+                                <button id="refreshStacked" class="btn btn-sm btn-primary ms-2">Refresh</button>
+                            </div>
+                            <h4 class="card-title ms-auto mb-0">Grafik Status Pembayaran per Anggota (Stacked per Bulan)</h4>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container" style="position: relative; height:480px; width:100%">
+                            <canvas id="memberPaymentStackedChart"></canvas>
+                        </div>
+                        <div class="mt-2 small text-muted">Warna: <span class="badge" style="background:#2ecc71">&nbsp;</span> Lunas &nbsp; <span class="badge" style="background:#3498db">&nbsp;</span> Telat &nbsp; <span class="badge" style="background:#e74c3c">&nbsp;</span> Belum Lunas</div>
+                        <div class="small text-muted mt-1">Status telat dia membayar walaupun jatuh tempo</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Grafik Radar Aktivitas Operator -->
         <div class="row">
             <div class="col-md-12">
@@ -895,6 +923,103 @@
                         }
                     });
                 }
+
+                // --- STACKED MEMBER PAYMENT CHART (AJAX) ---
+                let stackedChart;
+                async function loadStackedChart(period, startMonth, startYear) {
+                    let url = 'api_payment_status.php?period=' + encodeURIComponent(period);
+                    if (startMonth && startYear) {
+                        url += '&start_month=' + encodeURIComponent(startMonth) + '&start_year=' + encodeURIComponent(startYear);
+                    }
+                    const resp = await fetch(url);
+                    if (!resp.ok) return;
+                    const json = await resp.json();
+
+                    const ctx = document.getElementById('memberPaymentStackedChart').getContext('2d');
+
+                    const data = {
+                        labels: json.users,
+                        datasets: json.datasets.map(ds => ({
+                            label: ds.label,
+                            data: ds.data,
+                            backgroundColor: ds.backgroundColor,
+                            borderColor: ds.borderColor,
+                            borderWidth: ds.borderWidth
+                        }))
+                    };
+
+                    const options = {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const user = context.label;
+                                        const month = context.dataset.label;
+                                        const statusColor = context.dataset.backgroundColor[context.dataIndex];
+                                        let statusText = '';
+                                        if (statusColor === '#2ecc71') statusText = 'Lunas';
+                                        else if (statusColor === '#3498db') statusText = 'Telat';
+                                        else statusText = 'Belum Lunas';
+                                        return month + ' — ' + user + ': ' + statusText;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                stacked: true,
+                                grid: {
+                                    display: false
+                                }
+                            },
+                            y: {
+                                stacked: true,
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Bulan (jumlah segmen = periode)'
+                                }
+                            }
+                        }
+                    };
+
+                    if (stackedChart) {
+                        stackedChart.data = data;
+                        stackedChart.options = options;
+                        stackedChart.update();
+                    } else {
+                        stackedChart = new Chart(ctx, {
+                            type: 'bar',
+                            data: data,
+                            options: options
+                        });
+                    }
+                }
+
+                document.getElementById('refreshStacked').addEventListener('click', function() {
+                    const period = parseInt(document.getElementById('stacked_period').value, 10) || 3;
+                    // If period is 3, load starting from October of current year as requested
+                    if (period === 3) {
+                        const curYear = new Date().getFullYear();
+                        loadStackedChart(period, 10, curYear);
+                    } else {
+                        loadStackedChart(period);
+                    }
+                });
+
+                // initialize default period = 3
+                document.getElementById('stacked_period').value = '3';
+                // load default 3-month view starting at October of current year
+                const initYear = new Date().getFullYear();
+                loadStackedChart(3, 10, initYear);
 
                 // --- RADAR CHART FOR OPERATOR ACTIVITY ---
                 var totalPengumuman = <?= $total_pengumuman ?? 0 ?>;

@@ -1,6 +1,39 @@
+<?php
+if (session_status() == PHP_SESSION_NONE) {
+    session_start();
+}
+
+$display_name = htmlspecialchars($_SESSION['nama_lengkap'] ?? $_SESSION['username'] ?? 'Admin');
+$profile_picture = htmlspecialchars($_SESSION['profile_picture'] ?? 'default.png');
+
+// If profile picture or name not in session, try to fetch from DB when id is available
+if ((empty($_SESSION['profile_picture']) || empty($_SESSION['nama_lengkap'])) && isset($_SESSION['id_user'])) {
+    include_once __DIR__ . '/../../config/database.php';
+    if (isset($conn)) {
+        $stmt = $conn->prepare('SELECT nama_lengkap, profile_picture FROM user WHERE id_user = ? LIMIT 1');
+        $stmt->bind_param('i', $_SESSION['id_user']);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        if ($res && $row = $res->fetch_assoc()) {
+            if (!empty($row['nama_lengkap'])) {
+                $display_name = htmlspecialchars($row['nama_lengkap']);
+            }
+            if (!empty($row['profile_picture'])) {
+                $profile_picture = htmlspecialchars($row['profile_picture']);
+            }
+        }
+        $stmt->close();
+    }
+}
+?>
+
 <nav
     class="navbar navbar-header navbar-header-transparent navbar-expand-lg border-bottom">
     <div class="container-fluid">
+        <!-- Mobile sidebar toggler (visible on small screens) -->
+        <button class="btn btn-link sidenav-toggler d-lg-none me-2" type="button" aria-label="Open sidebar">
+            <i class="fas fa-bars"></i>
+        </button>
         <nav
             class="navbar navbar-header-left navbar-expand-lg navbar-form nav-search p-0 d-none d-lg-flex">
             <div class="input-group">
@@ -278,13 +311,14 @@
                     aria-expanded="false">
                     <div class="avatar-sm">
                         <img
-                            src="../assets/img/profile.jpg"
-                            alt="..."
+                            src="../upload/profile/<?php echo $profile_picture; ?>"
+                            alt="profile"
+                            onerror="this.onerror=null;this.src='../assets/img/profile.jpg'"
                             class="avatar-img rounded-circle" />
                     </div>
                     <span class="profile-username">
                         <span class="op-7">Hi,</span>
-                        <span class="fw-bold">Hizrian</span>
+                        <span class="fw-bold"><?php echo $display_name; ?></span>
                     </span>
                 </a>
                 <ul class="dropdown-menu dropdown-user animated fadeIn">
@@ -293,13 +327,14 @@
                             <div class="user-box">
                                 <div class="avatar-lg">
                                     <img
-                                        src="../assets/img/profile.jpg"
+                                        src="../upload/profile/<?php echo $profile_picture; ?>"
                                         alt="image profile"
+                                        onerror="this.onerror=null;this.src='../assets/img/profile.jpg'"
                                         class="avatar-img rounded" />
                                 </div>
                                 <div class="u-text">
-                                    <h4>Hizrian</h4>
-                                    <p class="text-muted">hello@example.com</p>
+                                    <h4><?php echo $display_name; ?></h4>
+                                    <p class="text-muted"><?php echo htmlspecialchars($_SESSION['username'] ?? ''); ?></p>
                                     <a
                                         href="profile.html"
                                         class="btn btn-xs btn-secondary btn-sm">View Profile</a>

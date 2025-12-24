@@ -28,6 +28,9 @@ if (isset($_POST['login'])) {
             $_SESSION['id_user'] = $user['id_user'];
             $_SESSION['username'] = $user['username'];
             $_SESSION['role'] = $user['role'];
+            // Store additional display info to use in navbar/layouts
+            $_SESSION['nama_lengkap'] = $user['nama_lengkap'] ?? $user['username'];
+            $_SESSION['profile_picture'] = $user['profile_picture'] ?? null;
 
             if ($user['role'] == 'admin') {
                 header("Location: ../admin/dashboard_admin.php");
@@ -287,6 +290,8 @@ if (isset($_POST['login'])) {
                     this.size = rand(2, 6);
                     this.life = rand(6, 18);
                     this.age = init ? rand(0, this.life) : 0;
+                    // base opacity per particle to vary brightness
+                    this.baseOpacity = rand(0.35, 0.85);
                 }
                 draw(ctx) {
                     ctx.save();
@@ -296,7 +301,9 @@ if (isset($_POST['login'])) {
                     const radius = this.size * 10;
                     const g = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, radius);
                     // center vivid white, fade to transparent
-                    const centerAlpha = Math.min(1, this.opacity);
+                    // Compute opacity based on age/life, clamp to [0,1]
+                    const lifeRatio = this.life > 0 ? Math.max(0, Math.min(1, this.age / this.life)) : 0;
+                    const centerAlpha = Math.max(0, Math.min(1, this.baseOpacity * (1 - lifeRatio)));
                     g.addColorStop(0, `rgba(255,255,255, ${centerAlpha})`);
                     g.addColorStop(1, 'rgba(255,255,255,0)');
                     ctx.fillStyle = g;

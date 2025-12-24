@@ -161,8 +161,13 @@ $result = $conn->query($sql);
                 </div>
             </div>
 
-            <!-- Modal for Editing Own Profile -->
-            <?php include 'edit_user.php'; ?>
+            <!-- Modal for Editing Own Profile (optional include) -->
+            <?php
+            $editUserPath = __DIR__ . '/edit_user.php';
+            if (file_exists($editUserPath)) {
+                include $editUserPath;
+            }
+            ?>
 
             <!-- Footer -->
             <?php include 'layout_operator/footer.php'; ?>
