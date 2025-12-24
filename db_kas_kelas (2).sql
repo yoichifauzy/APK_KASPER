@@ -3,9 +3,9 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Dec 13, 2025 at 06:13 AM
+-- Generation Time: Dec 24, 2025 at 02:38 AM
 -- Server version: 8.4.3
--- PHP Version: 8.4.10
+-- PHP Version: 8.3.29
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -309,7 +309,9 @@ INSERT INTO `kas` (`id_kas`, `tanggal`, `jenis`, `jumlah`, `keterangan`, `id_kat
 (11, '2025-11-27', 'pengeluaran', 75000.00, 'Bendera IT', 3, 16),
 (12, '2025-12-03', 'pengeluaran', 26000.00, 'GAPIN', 3, 16),
 (13, '2025-12-04', 'pengeluaran', 38000.00, 'GAPIN v2', 3, 16),
-(14, '2025-12-09', 'pengeluaran', 18000.00, 'GAPIN v3', 3, 16);
+(14, '2025-12-09', 'pengeluaran', 18000.00, 'GAPIN v3', 3, 16),
+(15, '2025-12-15', 'pengeluaran', 20000.00, 'DEPO Badminton', 3, 16),
+(16, '2025-12-23', 'pengeluaran', 50000.00, 'Metis', 3, 16);
 
 -- --------------------------------------------------------
 
@@ -393,7 +395,8 @@ INSERT INTO `pembayaran` (`id_pembayaran`, `id_user`, `id_kas`, `id_kategori`, `
 (58, 8, NULL, 1, 'lunas', '2025-12-09', 15000.00, NULL, 'PAY-8-3aedda', 'barcode__P_A_Y_-_8_-_3_a_e_d_d_a_.png', 16, NULL),
 (59, 9, NULL, 1, 'telat', '2025-11-15', 15000.00, NULL, 'PAY-9-544796', 'barcode__P_A_Y_-_9_-_5_4_4_7_9_6_.png', 16, NULL),
 (60, 9, NULL, 1, 'lunas', '2025-12-09', 15000.00, NULL, 'PAY-9-114ed2', 'barcode__P_A_Y_-_9_-_1_1_4_e_d_2_.png', 16, NULL),
-(61, 4, NULL, 1, 'lunas', '2025-12-09', 15000.00, NULL, 'PAY-4-dcda87', 'barcode__P_A_Y_-_4_-_d_c_d_a_8_7_.png', 16, NULL);
+(61, 4, NULL, 1, 'lunas', '2025-12-09', 15000.00, NULL, 'PAY-4-dcda87', 'barcode__P_A_Y_-_4_-_d_c_d_a_8_7_.png', 16, NULL),
+(62, 12, NULL, 1, 'telat', '2025-11-23', 15000.00, NULL, 'PAY-12-507c5b', 'barcode__P_A_Y_-_1_2_-_5_0_7_c_5_b_.png', 16, NULL);
 
 -- --------------------------------------------------------
 
@@ -441,7 +444,7 @@ INSERT INTO `ranking` (`id_ranking`, `id_user`, `jumlah_rajinnya`, `jumlah_telat
 (3, 9, 2, 1, 15),
 (4, 14, 2, 1, 15),
 (5, 8, 3, 0, 30),
-(6, 12, 1, 0, 10),
+(6, 12, 1, 1, 5),
 (7, 3, 2, 1, 15),
 (8, 13, 1, 1, 5),
 (9, 4, 2, 1, 15),
@@ -744,7 +747,7 @@ ALTER TABLE `jadwal_kegiatan`
 -- AUTO_INCREMENT for table `kas`
 --
 ALTER TABLE `kas`
-  MODIFY `id_kas` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
+  MODIFY `id_kas` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
 
 --
 -- AUTO_INCREMENT for table `kas_kategori`
@@ -756,7 +759,7 @@ ALTER TABLE `kas_kategori`
 -- AUTO_INCREMENT for table `pembayaran`
 --
 ALTER TABLE `pembayaran`
-  MODIFY `id_pembayaran` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=62;
+  MODIFY `id_pembayaran` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=63;
 
 --
 -- AUTO_INCREMENT for table `private_chat`
